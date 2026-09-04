@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "multitudcsd"
+version = "0.1.0"
+description = "Ingesta y procesamiento de datos de movilidad durante el CSD (pride) de Berlin"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "pyspark==3.5.1",
+    "delta-spark==3.2.0",
+    "requests==2.32.3",
+    "gtfs-realtime-bindings==1.0.0",
+    "h3==4.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.3",
+    "ruff==0.6.9",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]   # errores, pyflakes, orden de imports

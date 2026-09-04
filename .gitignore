@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+data/
+.env
+*.whl
+dist/
+build/
+mlruns/
+.idea/
+.pytest_cache/
+.ruff_cache/
+spark-warehouse/

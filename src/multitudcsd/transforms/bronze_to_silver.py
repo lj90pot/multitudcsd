@@ -1,0 +1,254 @@
+"""Transformaciones Bronze -> Silver del tier 1 (transporte).
+
+Cada build_silver_* es una funcion pura: recibe DataFrame(s) de Bronze ya leidos y
+devuelve el DataFrame de Silver correspondiente, sin tocar disco. Eso permite testear
+la logica con datos de ejemplo, sin depender de que exista Bronze en el filesystem.
+"""
+import json
+from pyspark.sql import DataFrame
+from pyspark.sql import functions as F
+from pyspark.sql.types import (
+    ArrayType,
+    DoubleType,
+    IntegerType,
+    LongType,
+    StringType,
+    StructField,
+    StructType,
+)
+
+from multitudcsd.transforms.geo import add_h3_index
+
+# BICIS
+## Esquemas para parsear el payload_json de Bronze (GBFS)
+
+ESQUEMA_STATUS_JSON = StructType([
+    StructField("station_id", StringType()),
+    StructField("num_bikes_available", IntegerType()),
+    StructField("num_docks_available", IntegerType()),
+    StructField("is_renting", IntegerType()),
+    StructField("is_returning", IntegerType()),
+    StructField("last_reported", LongType()),  # segundos desde epoch
+])
+
+ESQUEMA_INFO_JSON = StructType([
+    StructField("station_id", StringType()),
+    # lat/lon como string: algunos operadores GBFS los mandan como texto, no numero.
+    # Se tranforman a double al seleccionar.
+    StructField("lat", StringType()),
+    StructField("lon", StringType()),
+    StructField("capacity", IntegerType()),
+])
+
+
+def build_silver_bike_availability(
+    bronze_status: DataFrame, bronze_info: DataFrame
+) -> DataFrame:
+    """Cruza disponibilidad (station_status) con ubicacion (station_information).
+
+    Devuelve una fila por lectura de estacion, con h3_index calculado a partir de la
+    ubicacion estatica de la estacion. Join inner: una estacion sin informacion
+    estatica se elimina, ya que no tiene sentido inventarse donde está.
+    """
+    status_tipado = (
+        bronze_status
+        .withColumn("datos", F.from_json("payload_json", ESQUEMA_STATUS_JSON))
+        .select(
+            F.col("datos.station_id").alias("station_id"),
+            F.col("datos.num_bikes_available").alias("num_bikes_available"),
+            F.col("datos.num_docks_available").alias("num_docks_available"),
+            F.col("datos.is_renting").alias("is_renting"),
+            F.col("datos.is_returning").alias("is_returning"),
+            F.col("datos.last_reported").cast("timestamp").alias("reading_ts"),
+        )
+        .dropDuplicates(["station_id", "reading_ts"])
+    )
+
+    info_tipado = (
+        bronze_info
+        .withColumn("datos", F.from_json("payload_json", ESQUEMA_INFO_JSON))
+        .select(
+            F.col("datos.station_id").alias("station_id"),
+            F.col("datos.lat").cast("double").alias("lat"),
+            F.col("datos.lon").cast("double").alias("lon"),
+            F.col("datos.capacity").alias("capacity"),
+        )
+        .dropDuplicates(["station_id"])
+    )
+
+    silver = status_tipado.join(info_tipado, on="station_id", how="inner")
+    return add_h3_index(silver, lat_col="lat", lon_col="lon")
+
+# OPNV
+## Esquemas para parsear el protobuf de Bronze (GTFS)
+ESQUEMA_TRIP_UPDATE_JSON = StructType([
+    StructField("trip", StructType([
+        StructField("trip_id", StringType()),
+        StructField("route_id", StringType()),
+        StructField("start_date", StringType()),
+    ])),
+    StructField("stop_time_update", ArrayType(StructType([
+        StructField("stop_id", StringType()),
+        StructField("stop_sequence", IntegerType()),
+        StructField("arrival", StructType([
+            StructField("delay", IntegerType()),
+        ])),
+        StructField("departure", StructType([
+            StructField("delay", IntegerType()),
+        ])),
+    ]))),
+])
+
+
+def build_silver_transit_delays(
+    bronze_tripupdates: DataFrame, bronze_stops: DataFrame
+) -> DataFrame:
+    """Aplana los trip_update de GTFS-RT a una fila por parada, con retraso y h3_index.
+
+    Cruza por stop_id con las paradas del GTFS estatico (bronze_gtfs_static_stops,
+    ya filtradas a la zona del CSD por gtfs_static.py) para obtener la coordenada de
+    la parada. Join left: si una parada no aparece en el estatico filtrado, el retraso
+    se conserva igualmente pero con h3_index nulo (no se pierde el dato, se pierde solo
+    la posicion). Un retraso negativo (el tren va adelantado) es un valor valido, no se
+    filtra.
+    """
+    parseado = bronze_tripupdates.withColumn(
+        "datos", F.from_json("payload_json", ESQUEMA_TRIP_UPDATE_JSON)
+    )
+
+    explotado = parseado.select(
+        F.col("datos.trip.trip_id").alias("trip_id"),
+        F.col("datos.trip.route_id").alias("route_id"),
+        F.explode("datos.stop_time_update").alias("actualizacion"),
+        F.col("feed_timestamp").cast("long").alias("feed_timestamp"),
+    )
+
+    retrasos = (
+        explotado
+        .select(
+            "trip_id",
+            "route_id",
+            F.col("actualizacion.stop_id").alias("stop_id"),
+            F.coalesce(
+                F.col("actualizacion.arrival.delay"),
+                F.col("actualizacion.departure.delay"),
+            ).alias("delay_seconds"),
+            F.from_unixtime("feed_timestamp").cast("timestamp").alias("feed_ts"),
+        )
+        .filter(F.col("delay_seconds").isNotNull())
+        .dropDuplicates(["trip_id", "stop_id", "feed_ts"])
+    )
+
+    paradas = (
+        bronze_stops
+        .select(
+            F.col("stop_id"),
+            F.col("stop_lat").cast("double").alias("lat"),
+            F.col("stop_lon").cast("double").alias("lon"),
+        )
+        .dropDuplicates(["stop_id"])
+    )
+
+    silver = retrasos.join(paradas, on="stop_id", how="left")
+    return add_h3_index(silver, lat_col="lat", lon_col="lon")
+
+# CORTES
+ESQUEMA_PUNTO = StructType([
+    StructField("lon", DoubleType()),
+    StructField("lat", DoubleType()),
+])
+
+
+def extract_representative_point(payload_json: str) -> tuple:
+    """Extrae (lon, lat) de la geometria del payload VIZ. (None, None) si no hay punto.
+
+    El feed mezcla geometrias simples con GeometryCollection (marcador + linea del
+    tramo). Nos basta un punto representativo para el h3_index:
+      - si geometry.type es 'Point', se usa directamente.
+      - si es 'GeometryCollection', se busca el primer 'Point' dentro de 'geometries'.
+      - en cualquier otro caso (un LineString o Polygon sueltos, sin Point dentro), no
+        hay punto representativo y se devuelve (None, None).
+    """
+    datos = json.loads(payload_json)
+    geometria = datos.get("geometry") or {}
+    tipo = geometria.get("type")
+
+    if tipo == "Point":
+        lon, lat = geometria["coordinates"]
+        return (lon, lat)
+
+    if tipo == "GeometryCollection":
+        for sub_geometria in geometria.get("geometries", []):
+            if sub_geometria.get("type") == "Point":
+                lon, lat = sub_geometria["coordinates"]
+                return (lon, lat)
+
+    return (None, None)
+
+
+_extraer_punto_udf = F.udf(extract_representative_point, ESQUEMA_PUNTO)
+
+# properties.validity.{from,to}: fecha de inicio/fin del corte, formato "2026-03-12T12:00"
+# (sin segundos, sin zona horaria). Ojo: 'from' es palabra reservada en SQL, por eso se
+# accede con .getField() en vez de con notacion de punto en una cadena de columna.
+ESQUEMA_VIZ_PROPERTIES_JSON = StructType([
+    StructField("subtype", StringType()),   # ej. "Baustelle" (obra)
+    StructField("severity", StringType()),  # ej. "keine Sperrung" (sin corte total)
+    StructField("street", StringType()),
+    StructField("section", StringType()),
+    StructField("content", StringType()),   # descripcion libre del corte
+    StructField("validity", StructType([
+        StructField("from", StringType()),
+        StructField("to", StringType()),
+    ])),
+])
+
+FORMATO_FECHA_VIZ = "yyyy-MM-dd'T'HH:mm"
+
+
+def build_silver_disruptions(bronze_viz: DataFrame) -> DataFrame:
+    """Tipa los cortes de trafico, con punto representativo, ventana de vigencia y h3_index.
+
+    disruption_id ya viene tipado desde Bronze (columna propia, no hace falta sacarlo
+    de properties.id otra vez). dropDuplicates por disruption_id: el mismo corte se
+    vuelve a descargar en cada ingesta mientras siga activo, y aqui solo queremos una
+    fila por corte, no una por ingesta.
+    """
+    con_punto = bronze_viz.withColumn("punto", _extraer_punto_udf(F.col("payload_json")))
+    parseado = con_punto.withColumn(
+        "datos", F.from_json("payload_json", ESQUEMA_VIZ_PROPERTIES_JSON)
+    )
+    validez = F.col("datos.validity")
+
+    silver = parseado.select(
+        "disruption_id",
+        F.col("datos.subtype").alias("subtype"),
+        F.col("datos.severity").alias("severity"),
+        F.col("datos.street").alias("street"),
+        F.col("datos.content").alias("content"),
+        F.to_timestamp(validez.getField("from"), FORMATO_FECHA_VIZ).alias("valid_from"),
+        F.to_timestamp(validez.getField("to"), FORMATO_FECHA_VIZ).alias("valid_to"),
+        F.col("punto.lon").alias("lon"),
+        F.col("punto.lat").alias("lat"),
+    ).dropDuplicates(["disruption_id"])
+
+    return add_h3_index(silver, lat_col="lat", lon_col="lon")
+
+if __name__ == "__main__":
+    from multitudcsd.config import get_spark_session
+    from multitudcsd.storage import read_delta, write_silver
+
+    sesion = get_spark_session("bronze-to-silver")
+
+    bronze_status = read_delta(sesion, "bronze", "bronze_nextbike_status")
+    bronze_info = read_delta(sesion, "bronze", "bronze_nextbike_station_information")
+    write_silver(build_silver_bike_availability(bronze_status, bronze_info), "silver_bike_availability")
+
+    bronze_tripupdates = read_delta(sesion, "bronze", "bronze_gtfs_tripupdates")
+    bronze_stops = read_delta(sesion, "bronze", "bronze_gtfs_static_stops")
+    write_silver(build_silver_transit_delays(bronze_tripupdates, bronze_stops), "silver_transit_delays")
+
+    bronze_viz = read_delta(sesion, "bronze", "bronze_viz_disruptions")
+    write_silver(build_silver_disruptions(bronze_viz), "silver_disruptions")
+
+    sesion.stop()
