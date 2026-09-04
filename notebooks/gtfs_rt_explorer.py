@@ -1,8 +1,7 @@
 """Explora el feed GTFS-Realtime de VBB (protobuf) para ver que forma tienen los datos.
 
-Igual que bvg_client.py: es un script suelto, NO forma parte todavia del paquete
-multitudcsd. La logica de produccion ya vive en ingestion/gtfs_rt.py (ver la guia
-de ingesta); esto es solo para mirar el payload con calma antes de decidir nada.
+Igual que bvg_client.py: es un script suelto. La logica de produccion ya esta en ingestion/gtfs_rt.py
+esto es solo para mirar el payload antes de decidir.
 
 Requiere: pip install requests gtfs-realtime-bindings
 """

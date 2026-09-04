@@ -37,6 +37,8 @@ def obtener_payload(endpoint: str, params: dict | None = None) -> dict | list:
             respuesta = requests.get(url, params=params, timeout=TIMEOUT_SEGUNDOS)
             respuesta.raise_for_status()
             print(f"[bvg] OK {respuesta.url}")
+            print(respuesta)
+
             return respuesta.json()
         except requests.RequestException as error:
             ultimo_error = error

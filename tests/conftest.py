@@ -12,9 +12,10 @@ DIRECTORIO_FIXTURES = Path(__file__).parent / "fixtures"
 
 @pytest.fixture(scope="session")
 def spark():
-    """SparkSession local, compartida por toda la sesion de tests (arrancarla es lento)."""
+    """SparkSession local, de toda la sesion de tests"""
     sesion = get_spark_session("tests")
     yield sesion
+    #cerrar la sesion al completar los tests
     sesion.stop()
 
 
@@ -27,7 +28,7 @@ def gbfs_status_payload() -> dict:
 
 @pytest.fixture
 def gbfs_discovery_payload() -> dict:
-    """Payload de ejemplo del fichero de descubrimiento GBFS."""
+    """Payload de ejemplo del fichero de discovery GBFS."""
     with open(DIRECTORIO_FIXTURES / "gbfs_discovery_sample.json", encoding="utf-8") as f:
         return json.load(f)
 
@@ -36,3 +37,10 @@ def gbfs_discovery_payload() -> dict:
 def gtfs_rt_bytes() -> bytes:
     """Feed GTFS-RT de ejemplo en formato protobuf."""
     return (DIRECTORIO_FIXTURES / "gtfs_rt_sample.pb").read_bytes()
+
+
+@pytest.fixture
+def gbfs_discovery_payload() -> dict:
+    """Payload de ejemplo del fichero de discovery GBFS."""
+    with open(DIRECTORIO_FIXTURES / "viz_disruptions_sample.json", encoding="utf-8") as f:
+        return json.load(f)

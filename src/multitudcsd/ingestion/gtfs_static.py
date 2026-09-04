@@ -25,7 +25,7 @@ from multitudcsd.ingestion.http_request import download_bytes
 
 URL_GTFS_ESTATICO = "https://www.vbb.de/vbbgtfs"
 
-# Caja delimitadora (bounding box) alrededor del recorrido del CSD 2026:
+# Coordenadas para limiitar alrededor del recorrido del CSD 2026:
 # Spittelmarkt -> Nollendorfplatz (Schoneberg) -> Puerta de Brandeburgo.
 # Coordenadas de esos tres puntos sacadas de Wikipedia, con un margen de unos
 # 1.5 km alrededor. Es una aproximacion simple, NO el trazado exacto de la

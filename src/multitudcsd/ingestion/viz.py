@@ -30,14 +30,17 @@ def get_feed_url() -> str:
 
 
 def parse_disruptions(payload: dict, source_url: str) -> list[dict]:
-    """Convierte el payload de incidencias en filas crudas para Bronze.
+    """Convierte el payload de incidencias en filas para Bronze.
 
     """
     incidencias = payload.get("features", [])
     filas = []
     for incidencia in incidencias:
+        #Corregido aqui porque el id viene dentro de properties
+        propiedades = incidencia.get("properties", {})
+        id_incidencia = propiedades.get("id","")
         filas.append({
-            "disruption_id": str(incidencia.get("id", "")),
+            "disruption_id": str(id_incidencia),
             "payload_json": json.dumps(incidencia, ensure_ascii=False),
             "source_url": source_url,
         })
