@@ -44,3 +44,7 @@ cambiar la densidad de la malla.
 - silver y gold se sobreescriben cada vez, ya que el volumen de datos no es importante en este momento
 - La malla de H3 sera el nivel 9 de 174m de arista. esto ayuda a anonimizar y da suficiente
 resolucion para modelar donde esta la gente y las estaciones 
+
+# en una primera version se metian directamente las coordenadas que limitaban un rectangulo
+alrededor del recorrido. He mejorado el codigo para que cada año se puedan meter los puntos
+de interes del recorrido y las coordenadas se calculen automaticamente

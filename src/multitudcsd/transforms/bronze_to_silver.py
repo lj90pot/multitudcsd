@@ -1,8 +1,8 @@
 """Transformaciones Bronze -> Silver del tier 1 (transporte).
 
-Cada build_silver_* es una funcion pura: recibe DataFrame(s) de Bronze ya leidos y
-devuelve el DataFrame de Silver correspondiente, sin tocar disco. Eso permite testear
-la logica con datos de ejemplo, sin depender de que exista Bronze en el filesystem.
+Cada build_silver_* es una funcion: recibe DataFrame de Bronze ya leidos y
+devuelve el DataFrame de Silver correspondiente. Eso permite testear con datos de ejemplo
+sin depender de que exista Bronze en el filesystem.
 """
 import json
 from pyspark.sql import DataFrame
@@ -47,7 +47,7 @@ def build_silver_bike_availability(
     """Cruza disponibilidad (station_status) con ubicacion (station_information).
 
     Devuelve una fila por lectura de estacion, con h3_index calculado a partir de la
-    ubicacion estatica de la estacion. Join inner: una estacion sin informacion
+    ubicacion estatica de la estacion. Inner join: una estacion sin informacion
     estatica se elimina, ya que no tiene sentido inventarse donde está.
     """
     status_tipado = (
@@ -188,44 +188,52 @@ def extract_representative_point(payload_json: str) -> tuple:
 
 _extraer_punto_udf = F.udf(extract_representative_point, ESQUEMA_PUNTO)
 
-# properties.validity.{from,to}: fecha de inicio/fin del corte, formato "2026-03-12T12:00"
-# (sin segundos, sin zona horaria). Ojo: 'from' es palabra reservada en SQL, por eso se
-# accede con .getField() en vez de con notacion de punto en una cadena de columna.
-ESQUEMA_VIZ_PROPERTIES_JSON = StructType([
-    StructField("subtype", StringType()),   # ej. "Baustelle" (obra)
-    StructField("severity", StringType()),  # ej. "keine Sperrung" (sin corte total)
-    StructField("street", StringType()),
-    StructField("section", StringType()),
-    StructField("content", StringType()),   # descripcion libre del corte
-    StructField("validity", StructType([
-        StructField("from", StringType()),
-        StructField("to", StringType()),
+# properties.validity.{from,to}: fecha de inicio/fin del corte, formato "2026.03.12 12:00"
+ESQUEMA_VIZ_FEATURE_JSON = StructType([
+    StructField("properties", StructType([
+        StructField("id", StringType()),
+        StructField("tstore", StringType()),       # instante en que VIZ publica esta version
+        StructField("objectState", StringType()),  # "new" | "modified" | ...
+        StructField("subtype", StringType()),      # "Sperrung" (corte) | "Baustelle" (obra)
+        StructField("icon", StringType()),
+        StructField("severity", StringType()),
+        StructField("street", StringType()),
+        StructField("section", StringType()),
+        StructField("content", StringType()),      # descripcion libre: "gesperrt, Demonstration"
+        StructField("validity", StructType([
+            StructField("from", StringType()),
+            StructField("to", StringType()),
+        ])),
     ])),
 ])
 
-FORMATO_FECHA_VIZ = "yyyy-MM-dd'T'HH:mm"
+FORMATO_FECHA_VIZ = "dd.MM.yyyy HH:mm"
 
 
 def build_silver_disruptions(bronze_viz: DataFrame) -> DataFrame:
-    """Tipa los cortes de trafico, con punto representativo, ventana de vigencia y h3_index.
+    """Contruye los puntos de incidencias, con punto representativo, ventana de vigencia y h3_index.
 
     disruption_id ya viene tipado desde Bronze (columna propia, no hace falta sacarlo
     de properties.id otra vez). dropDuplicates por disruption_id: el mismo corte se
-    vuelve a descargar en cada ingesta mientras siga activo, y aqui solo queremos una
-    fila por corte, no una por ingesta.
+    vuelve a descargar con una nueva ingesta mientras siga activo asi que lo eliminamos,
+    solo necesitamos una fila por incidencia
     """
     con_punto = bronze_viz.withColumn("punto", _extraer_punto_udf(F.col("payload_json")))
     parseado = con_punto.withColumn(
-        "datos", F.from_json("payload_json", ESQUEMA_VIZ_PROPERTIES_JSON)
+        "datos", F.from_json("payload_json", ESQUEMA_VIZ_FEATURE_JSON)
     )
-    validez = F.col("datos.validity")
+    propiedades = F.col("datos.properties")
+    validez = propiedades.getField("validity")
 
     silver = parseado.select(
         "disruption_id",
-        F.col("datos.subtype").alias("subtype"),
-        F.col("datos.severity").alias("severity"),
-        F.col("datos.street").alias("street"),
-        F.col("datos.content").alias("content"),
+        propiedades.getField("subtype").alias("subtype"),
+        propiedades.getField("severity").alias("severity"),
+        propiedades.getField("street").alias("street"),
+        propiedades.getField("section").alias("section"),
+        propiedades.getField("content").alias("content"),
+        propiedades.getField("objectState").alias("object_state"),
+        propiedades.getField("tstore").cast("timestamp").alias("published_ts"),
         F.to_timestamp(validez.getField("from"), FORMATO_FECHA_VIZ).alias("valid_from"),
         F.to_timestamp(validez.getField("to"), FORMATO_FECHA_VIZ).alias("valid_to"),
         F.col("punto.lon").alias("lon"),

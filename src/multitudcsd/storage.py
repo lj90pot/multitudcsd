@@ -51,12 +51,12 @@ def write_silver(df: DataFrame, table_name: str) -> None:
     """Escribe una tabla Silver, reconstruyendola por completo en cada ejecucion.
     """
     ruta = get_table_path("silver", table_name)
-    df.write.format("delta").mode("overwrite").save(ruta)
+    df.write.format("delta").mode("overwrite").option("overwriteSchema","true").save(ruta)
     print(f"[storage] escritas {df.count()} filas en {ruta}")
 
 
 def write_gold(df: DataFrame, table_name: str) -> None:
     """Escribe una tabla Gold, reconstruyendola por completo en cada ejecucion."""
     ruta = get_table_path("gold", table_name)
-    df.write.format("delta").mode("overwrite").save(ruta)
+    df.write.format("delta").mode("overwrite").option("overwriteSchema","true").save(ruta)
     print(f"[storage] escritas {df.count()} filas en {ruta}")

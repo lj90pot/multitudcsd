@@ -17,6 +17,7 @@ solo con los horarios/viajes/lineas que pasan por esas paradas.
 import csv
 import io
 import zipfile
+import math
 
 from pyspark.sql import SparkSession
 
@@ -25,17 +26,48 @@ from multitudcsd.ingestion.http_request import download_bytes
 
 URL_GTFS_ESTATICO = "https://www.vbb.de/vbbgtfs"
 
-# Coordenadas para limiitar alrededor del recorrido del CSD 2026:
+#Se calcula el area de estaciones con los puntos de interes del recorrido
+# Puntos de referencia del recorrido del CSD 2026 (coordenadas de Wikipedia):
 # Spittelmarkt -> Nollendorfplatz (Schoneberg) -> Puerta de Brandeburgo.
-# Coordenadas de esos tres puntos sacadas de Wikipedia, con un margen de unos
-# 1.5 km alrededor. Es una aproximacion simple, NO el trazado exacto de la
-# calle (para eso haria falta la geometria real del recorrido, que no forma
-# parte de este proyecto). Documentar esta decision en docs/decisiones.md.
-LATITUD_MINIMA = 52.484
-LATITUD_MAXIMA = 52.531
-LONGITUD_MINIMA = 13.339
-LONGITUD_MAXIMA = 13.419
+PUNTOS_DEL_RECORRIDO = [
+    (52.5111, 13.4022),  # Spittelmarkt
+    (52.4994, 13.3542),  # Nollendorfplatz
+    (52.5163, 13.3777),  # Puerta de Brandeburgo
+]
 
+# Margen alrededor de esos puntos. Es una aproximacion simple, NO el trazado
+# exacto de la calle (para eso haria falta la geometria real del recorrido)
+#Este parametro se usa para calcular
+# las estaciones de llegada y dispersion del publico.
+MARGEN_KILOMETROS = 3.0
+
+#Correccion de la latitud
+# 1 grado de latitud son ~111.32 km en cualquier sitio, pero 1 grado de longitud
+# son 111.32 km * cos(latitud): en Berlin se queda en ~67.8 km. Sin esta
+# correccion la caja sale casi un 40% mas estrecha de lo que se pretende.
+KILOMETROS_POR_GRADO_LATITUD = 111.32
+LATITUD_DE_REFERENCIA = 52.51
+
+
+def compute_recorrido_area(puntos: list, margen_km: float) -> tuple:
+    """Devuelve (lat_min, lat_max, lon_min, lon_max) alrededor de una lista de puntos."""
+    margen_latitud = margen_km / KILOMETROS_POR_GRADO_LATITUD
+    margen_longitud = margen_km / (
+        KILOMETROS_POR_GRADO_LATITUD * math.cos(math.radians(LATITUD_DE_REFERENCIA))
+    )
+    latitudes = [latitud for latitud, longitud in puntos]
+    longitudes = [longitud for latitud, longitud in puntos]
+    return (
+        min(latitudes) - margen_latitud,
+        max(latitudes) + margen_latitud,
+        min(longitudes) - margen_longitud,
+        max(longitudes) + margen_longitud,
+    )
+
+
+LATITUD_MINIMA, LATITUD_MAXIMA, LONGITUD_MINIMA, LONGITUD_MAXIMA = compute_recorrido_area(
+    PUNTOS_DEL_RECORRIDO, MARGEN_KILOMETROS
+)
 
 def esta_cerca_del_csd(latitud: float, longitud: float) -> bool:
     """Dice si una coordenada cae dentro de la caja alrededor del recorrido del CSD."""
@@ -64,13 +96,12 @@ def abrir_fichero_del_zip(contenido_zip: bytes, nombre_fichero: str) -> csv.Dict
 
 
 def obtener_paradas_cerca_del_csd(contenido_zip: bytes) -> list[dict]:
-    """Lee stops.txt y se queda solo con las paradas dentro de la caja del CSD."""
+    """Lee stops.txt y se queda solo con las paradas dentro del area del CSD."""
     lector = abrir_fichero_del_zip(contenido_zip, "stops.txt")
 
     paradas_cercanas = []
     for fila in lector:
-        # Algunas filas de stops.txt no traen coordenadas (son entradas de
-        # estacion, no paradas en si). Las descartamos si faltan.
+        # Algunas filas de stops.txt no traen coordenadas. Las descartamos.
         if not fila.get("stop_lat") or not fila.get("stop_lon"):
             continue
         latitud = float(fila["stop_lat"])
@@ -85,9 +116,8 @@ def obtener_paradas_cerca_del_csd(contenido_zip: bytes) -> list[dict]:
 def obtener_horarios_de_esas_paradas(contenido_zip: bytes, ids_de_paradas: set) -> list[dict]:
     """Lee stop_times.txt y se queda solo con las filas de las paradas relevantes.
 
-    stop_times.txt de toda la red VBB tiene millones de filas. Filtramos fila
-    a fila mientras leemos, asi que solo terminamos guardando en memoria las
-    decenas de miles que de verdad tocan al CSD.
+    stop_times.txt de toda la red VBB tiene millones de filas.
+    Se filtran las relevantes cerca del reccorido definidas en el area mas arriba
     """
     lector = abrir_fichero_del_zip(contenido_zip, "stop_times.txt")
 
@@ -116,6 +146,40 @@ def obtener_lineas_relevantes(contenido_zip: bytes, ids_de_lineas: set) -> list[
     print(f"[gtfs_static] routes.txt: {len(lineas_relevantes)} lineas relevantes")
     return lineas_relevantes
 
+def obtener_calendario_viajes(contenido_zip: bytes, ids_de_servicios: set) -> list[dict]:
+    """Lee calendar.txt y se queda solo con los calendarios de los servicios relevantes.
+
+    Cada viaje de trips.txt apunta a un service_id que dice que dias de la semana
+    circula y entre que fechas.
+    """
+    try:
+        lector = abrir_fichero_del_zip(contenido_zip, "calendar.txt")
+    except KeyError:
+        # calendar.txt es opcional en GTFS: hay feeds que solo usan calendar_dates.txt.
+        print("[gtfs_static] calendar.txt no esta en el zip, se devuelve vacio")
+        return []
+
+    calendarios_relevantes = [fila for fila in lector if fila["service_id"] in ids_de_servicios]
+
+    print(f"[gtfs_static] calendar.txt: {len(calendarios_relevantes)} servicios relevantes")
+    return calendarios_relevantes
+
+def obtener_calendario_viaje_excepciones(contenido_zip: bytes, ids_de_servicios: set) -> list[dict]:
+    """Lee calendar_dates.txt y se queda solo con las excepciones de los servicios relevantes.
+
+    Aqui estan definidos los servicios de refuerzo en dias especiales o excepciones
+    planificadas en los servicios.
+    """
+    try:
+        lector = abrir_fichero_del_zip(contenido_zip, "calendar_dates.txt")
+    except KeyError:
+        print("[gtfs_static] calendar_dates.txt no esta en el zip, se devuelve vacio")
+        return []
+
+    excepciones_relevantes = [fila for fila in lector if fila["service_id"] in ids_de_servicios]
+
+    print(f"[gtfs_static] calendar_dates.txt: {len(excepciones_relevantes)} excepciones relevantes")
+    return excepciones_relevantes
 
 def guardar_tabla_gtfs_estatico(spark: SparkSession, nombre_tabla: str, filas: list[dict]) -> None:
     """Guarda una tabla del GTFS estatico en Bronze, sobrescribiendo la version anterior.
@@ -137,10 +201,9 @@ def guardar_tabla_gtfs_estatico(spark: SparkSession, nombre_tabla: str, filas: l
 def ingestar_gtfs_estatico(spark: SparkSession) -> None:
     """Descarga el GTFS estatico completo y guarda solo lo relevante para el CSD.
 
-    Filtra en cascada: primero las paradas cercanas, luego solo los horarios
-    de esas paradas, luego solo los viajes de esos horarios, luego solo las
-    lineas de esos viajes. Asi cada fichero se lee una vez y se filtra con lo
-    que ya sabemos del fichero anterior.
+    Filtra en cascada: primero las paradas cercanas, despues solo los horarios
+    de esas paradas, despues solo los viajes de esos horarios, despues solo las
+    lineas de esos viajes, y finalmente sus horarios y refuerzos si existen.
     """
     contenido_zip = descargar_zip_gtfs_estatico()
 
@@ -155,11 +218,16 @@ def ingestar_gtfs_estatico(spark: SparkSession) -> None:
 
     lineas = obtener_lineas_relevantes(contenido_zip, ids_de_lineas)
 
+    ids_de_servicios = {fila["service_id"] for fila in viajes}
+    calendarios = obtener_calendario_viajes(contenido_zip, ids_de_servicios)
+    excepciones_de_calendario = obtener_calendario_viaje_excepciones(contenido_zip, ids_de_servicios)
+
     guardar_tabla_gtfs_estatico(spark, "bronze_gtfs_static_stops", paradas)
     guardar_tabla_gtfs_estatico(spark, "bronze_gtfs_static_stop_times", horarios)
     guardar_tabla_gtfs_estatico(spark, "bronze_gtfs_static_trips", viajes)
     guardar_tabla_gtfs_estatico(spark, "bronze_gtfs_static_routes", lineas)
-
+    guardar_tabla_gtfs_estatico(spark, "bronze_gtfs_static_calendar", calendarios)
+    guardar_tabla_gtfs_estatico(spark, "bronze_gtfs_static_calendar_dates", excepciones_de_calendario)
 
 if __name__ == "__main__":
     # Permite ejecutar la ingesta directamente desde PyCharm con el boton Run.
