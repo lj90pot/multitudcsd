@@ -242,6 +242,129 @@ def build_silver_disruptions(bronze_viz: DataFrame) -> DataFrame:
 
     return add_h3_index(silver, lat_col="lat", lon_col="lon")
 
+#TODO pasar estas variables a variables de proyecto
+FECHA_CSD_GTFS = "20260905"        # formato yyyyMMdd de calendar.txt / calendar_dates.txt
+DIA_SEMANA_CSD = "saturday"        # el 25 de julio de 2026 cae en sabado
+
+def build_active_service_ids(
+    bronze_calendar: DataFrame, bronze_calendar_dates: DataFrame
+) -> DataFrame:
+    """Devuelve los service_id que circulan el dia del CSD, una columna, sin duplicados.
+
+    GTFS separa el patron semanal (calendar.txt: "circula los sabados entre estas dos
+    fechas") de las excepciones puntuales (calendar_dates.txt: exception_type 1 anade
+    un dia suelto, 2 lo suprime). Sin este filtro, contar la oferta usando todos los
+    trip_id mezclaria servicios de laborable, de sabado y de periodos de obras inflando
+     el numero de pasos programados.
+    """
+    servicios_regulares = (
+        bronze_calendar
+        .filter(F.col(DIA_SEMANA_CSD) == "1")
+        .filter(F.col("start_date") <= F.lit(FECHA_CSD_GTFS))
+        .filter(F.col("end_date") >= F.lit(FECHA_CSD_GTFS))
+        .select("service_id")
+    )
+
+    excepciones_del_dia = bronze_calendar_dates.filter(F.col("date") == F.lit(FECHA_CSD_GTFS))
+    servicios_anadidos = excepciones_del_dia.filter(F.col("exception_type") == "1").select("service_id")
+    servicios_suprimidos = excepciones_del_dia.filter(F.col("exception_type") == "2").select("service_id")
+
+    # left_anti = quedate con rows de la izquierda que no estan en la derecha
+    return (
+        servicios_regulares
+        .union(servicios_anadidos)
+        .distinct()
+        .join(servicios_suprimidos, on="service_id", how="left_anti")
+    )
+#TODO
+# Codigos GTFS de route_type. Los de una cifra son los basicos del estandar; los de
+# tres son los extendidos (Google/HVT), que VBB tambien puede publicar. Verificar los
+# valores reales del feed antes de darlos por buenos.
+ROUTE_TYPES_TRANVIA = ("0", "900")
+ROUTE_TYPES_METRO = ("1", "400", "402")
+ROUTE_TYPES_CERCANIAS = ("2", "100", "109")
+ROUTE_TYPES_BUS = ("3", "700", "715")
+ROUTE_TYPES_FERRY = ("4", "1000")
+
+
+def build_silver_transit_supply(
+    bronze_stop_times: DataFrame,
+    bronze_trips: DataFrame,
+    bronze_routes: DataFrame,
+    bronze_stops: DataFrame,
+    servicios_activos: DataFrame,
+) -> DataFrame:
+    """Oferta de transporte programada: una fila por viaje, parada y hora del dia del CSD.
+
+    Reconstruye la cadena stop_times -> trips -> routes -> stops que el GTFS deja
+    repartida en cuatro ficheros, y se queda solo con los viajes cuyo service_id
+    circula el dia del evento. El grano es el paso programado (un vehiculo parando
+    en una parada a una hora), que es el nivel mas fino desde el que se puede agregar
+    despues por estacion o por celda.
+    """
+    horarios = (
+        bronze_stop_times
+        .select(
+            "trip_id",
+            "stop_id",
+            F.col("stop_sequence").cast("int").alias("stop_sequence"),
+            # Alguna parada intermedia puede venir sin arrival_time: se usa la salida.
+            F.coalesce(F.col("arrival_time"), F.col("departure_time")).alias("hora_programada"),
+        )
+        .dropDuplicates(["trip_id", "stop_id", "stop_sequence"])
+    )
+
+    # GTFS admite horas >= 24 para el servicio nocturno que es del dia anterior
+    # ("25:10:00" son las 01:10 de la madrugada siguiente). Por eso no se puede transformar
+    # a timestamp: se extrae la hora y se lleva al rango 0-23 con un modulo.
+    horarios = horarios.withColumn(
+        "scheduled_hour",
+        F.split(F.col("hora_programada"), ":").getItem(0).cast("int") % 24,
+    ).filter(F.col("scheduled_hour").isNotNull())
+
+    viajes = bronze_trips.select("trip_id", "route_id", "service_id")
+    lineas = bronze_routes.select(
+        "route_id",
+        F.col("route_short_name").alias("route_name"),
+        "route_type",
+    )
+
+    paradas = (
+        bronze_stops
+        .select(
+            "stop_id",
+            "stop_name",
+            # parent_station puede llegar como cadena vacia en vez de nulo desde el csv.
+            F.when(
+                F.col("parent_station").isNull() | (F.col("parent_station") == ""),
+                F.col("stop_id"),
+            ).otherwise(F.col("parent_station")).alias("station_id"),
+            F.col("stop_lat").cast("double").alias("lat"),
+            F.col("stop_lon").cast("double").alias("lon"),
+        )
+        .dropDuplicates(["stop_id"])
+    )
+
+    unido = (
+        horarios
+        .join(viajes, on="trip_id", how="inner")
+        .join(servicios_activos, on="service_id", how="inner")
+        .join(lineas, on="route_id", how="left")
+        .join(paradas, on="stop_id", how="inner")
+    )
+
+    con_modo = unido.withColumn(
+        "transport_mode",
+        F.when(F.col("route_type").isin(*ROUTE_TYPES_TRANVIA), "tranvia")
+        .when(F.col("route_type").isin(*ROUTE_TYPES_METRO), "metro")
+        .when(F.col("route_type").isin(*ROUTE_TYPES_CERCANIAS), "cercanias")
+        .when(F.col("route_type").isin(*ROUTE_TYPES_BUS), "bus")
+        .when(F.col("route_type").isin(*ROUTE_TYPES_FERRY), "ferry")
+        .otherwise("otro"),
+    ).withColumn("source", F.lit("real"))
+
+    return add_h3_index(con_modo, lat_col="lat", lon_col="lon")
+
 if __name__ == "__main__":
     from multitudcsd.config import get_spark_session
     from multitudcsd.storage import read_delta, write_silver
@@ -258,5 +381,20 @@ if __name__ == "__main__":
 
     bronze_viz = read_delta(sesion, "bronze", "bronze_viz_disruptions")
     write_silver(build_silver_disruptions(bronze_viz), "silver_disruptions")
+
+    bronze_stop_times = read_delta(sesion, "bronze", "bronze_gtfs_static_stop_times")
+    bronze_trips = read_delta(sesion, "bronze", "bronze_gtfs_static_trips")
+    bronze_routes = read_delta(sesion, "bronze", "bronze_gtfs_static_routes")
+    bronze_stops = read_delta(sesion, "bronze", "bronze_gtfs_static_stops")
+    bronze_calendar = read_delta(sesion, "bronze", "bronze_gtfs_static_calendar")
+    bronze_calendar_dates = read_delta(sesion, "bronze", "bronze_gtfs_static_calendar_dates")
+
+    servicios_activos = build_active_service_ids(bronze_calendar, bronze_calendar_dates)
+    print(f"[silver] {servicios_activos.count()} servicios activos el dia del CSD")
+
+    supply = build_silver_transit_supply(
+        bronze_stop_times, bronze_trips, bronze_routes, bronze_stops, servicios_activos
+    )
+    write_silver(supply, "silver_transit_supply")
 
     sesion.stop()

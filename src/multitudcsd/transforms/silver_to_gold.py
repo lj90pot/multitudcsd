@@ -96,6 +96,44 @@ def build_gold_disruptions_by_cell(silver_disruptions: DataFrame) -> DataFrame:
         .agg(F.count("*").alias("num_disruptions"))
     )
 
+def build_gold_station_services(silver_transit_supply: DataFrame) -> DataFrame:
+    """Servicios que paran en cada estacion el dia del CSD: linea, modo y frecuencia.
+
+    Una fila por estacion y linea. num_scheduled_stops es el numero de pasos
+    programados en todo el dia; dividido entre las horas de servicio da la
+    frecuencia media, pero se deja el conteo crudo para no perder informacion.
+    """
+    return (
+        silver_transit_supply
+        .groupBy("station_id", "transport_mode", "route_name")
+        .agg(
+            F.first("stop_name").alias("station_name"),
+            F.first("h3_index").alias("h3_index"),
+            F.count("*").alias("num_scheduled_stops"),
+            F.min("scheduled_hour").alias("first_hour"),
+            F.max("scheduled_hour").alias("last_hour"),
+        )
+    )
+
+def build_gold_transit_capacity(silver_transit_supply: DataFrame) -> DataFrame:
+    """Oferta de transporte planificada por celda H3, franja horaria y modo.
+
+    num_scheduled_stops es el numero de vehiculos que tienen parada programada en
+    la celda durante esa hora. Es un proxy de capacidad, no una cifra de plazas:
+    GTFS no publica el aforo del vehiculo. Sirve como denominador de la presion de
+    movilidad (10 retrasos en una celda con 200 pasos programados no significan lo
+    mismo que en una con 12) y como feature del modelo.
+    """
+    return (
+        silver_transit_supply
+        .filter(F.col("h3_index").isNotNull())
+        .groupBy("h3_index", "scheduled_hour", "transport_mode")
+        .agg(
+            F.count("*").alias("num_scheduled_stops"),
+            F.countDistinct("route_name").alias("num_routes"),
+            F.countDistinct("station_id").alias("num_stations"),
+        )
+    )
 
 if __name__ == "__main__":
     from multitudcsd.config import get_spark_session
@@ -110,5 +148,9 @@ if __name__ == "__main__":
 
     silver_disruptions = read_delta(sesion, "silver", "silver_disruptions")
     write_gold(build_gold_disruptions_by_cell(silver_disruptions), "gold_disruptions_by_cell")
+
+    silver_transit_supply = read_delta(sesion, "silver", "silver_transit_supply")
+    write_gold(build_gold_station_services(silver_transit_supply), "gold_station_services")
+    write_gold(build_gold_transit_capacity(silver_transit_supply), "gold_transit_capacity")
 
     sesion.stop()

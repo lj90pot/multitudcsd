@@ -26,6 +26,8 @@ from multitudcsd.ingestion.http_request import download_bytes
 
 URL_GTFS_ESTATICO = "https://www.vbb.de/vbbgtfs"
 
+
+#TODO pasar estos puntos del recorrido a variables del proyecto
 #Se calcula el area de estaciones con los puntos de interes del recorrido
 # Puntos de referencia del recorrido del CSD 2026 (coordenadas de Wikipedia):
 # Spittelmarkt -> Nollendorfplatz (Schoneberg) -> Puerta de Brandeburgo.
