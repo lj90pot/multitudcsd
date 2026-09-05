@@ -6,7 +6,7 @@ a diferencia del feed GTFS-RT de VBB que se decodifica en ingestion/gtfs_rt.py.
 De momento es un script suelto para explorar el payload, NO forma parte
 todavia del paquete multitudcsd. Si se decide usarla como fuente real,
 se movera a src/multitudcsd/ingestion/bvg.py siguiendo el mismo patron que
-gbfs.py y gtfs_rt.py (usar ingestion/http.py para las llamadas, storage.py
+gbfs.py y gtfs_rt.py (usar ingestion/http.py para las llamadas
 para escribir en Bronze).
 """
 

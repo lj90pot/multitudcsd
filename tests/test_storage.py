@@ -2,7 +2,7 @@
 
 import pytest
 
-from multitudcsd.storage import add_ingest_metadata, get_table_path, read_delta, write_bronze
+from multitudcsd.storage import add_ingest_metadata, get_table_path, read_delta, write_bronze, write_silver
 
 
 def test_ruta_de_tabla(monkeypatch):

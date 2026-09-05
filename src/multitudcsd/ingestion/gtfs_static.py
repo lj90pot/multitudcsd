@@ -6,7 +6,7 @@ Por eso aqui NO usamos storage.write_bronze (esa funcion siempre hace append,
 pensada para eventos que se van acumulando). Cada vez que descargamos el GTFS
 estatico, sobrescribimos la tabla entera con la version nueva.
 
-IMPORTANTE: el GTFS estatico de VBB cubre TODO Berlin y Brandeburgo, no solo
+IMPORTANTE: el GTFS estatico de VBB cubre to.do Berlin y Brandeburgo, no solo
 la zona del CSD. stop_times.txt de toda la red tiene millones de filas, y
 cargarlas todas en Python antes de mandarlas a Spark es lento y puede agotar
 la memoria. Por eso filtramos por proximidad geografica al recorrido del CSD
@@ -20,12 +20,82 @@ import zipfile
 import math
 
 from pyspark.sql import SparkSession
+from pyspark.sql.types import StringType, StructField, StructType
 
 from multitudcsd.config import get_lakehouse_root
 from multitudcsd.ingestion.http_request import download_bytes
+from multitudcsd.storage import write_bronze_snapshot
 
 URL_GTFS_ESTATICO = "https://www.vbb.de/vbbgtfs"
 
+ESQUEMA_BRONZE_STOPS = StructType([
+    StructField("stop_id", StringType(), nullable=False),
+    StructField("stop_code", StringType(), nullable=True),
+    StructField("stop_name", StringType(), nullable=True),
+    StructField("stop_desc", StringType(), nullable=True),
+    StructField("stop_lat", StringType(), nullable=True),
+    StructField("stop_lon", StringType(), nullable=True),
+    StructField("location_type", StringType(), nullable=True),
+    StructField("parent_station", StringType(), nullable=True),
+    StructField("wheelchair_boarding", StringType(), nullable=True),
+    StructField("platform_code", StringType(), nullable=True),
+    StructField("zone_id", StringType(), nullable=True),
+    StructField("level_id", StringType(), nullable=True),
+])
+
+ESQUEMA_BRONZE_STOP_TIMES = StructType([
+    StructField("trip_id", StringType(), nullable=False),
+    StructField("stop_id", StringType(), nullable=False),
+    StructField("stop_sequence", StringType(), nullable=True),
+    StructField("pickup_type", StringType(), nullable=True),
+    StructField("drop_off_type", StringType(), nullable=True),
+    StructField("stop_headsign", StringType(), nullable=True),
+    StructField("arrival_time", StringType(), nullable=True),
+    StructField("departure_time", StringType(), nullable=True),
+])
+
+ESQUEMA_BRONZE_TRIPS = StructType([
+    StructField("route_id", StringType(), nullable=False),
+    StructField("service_id", StringType(), nullable=False),
+    StructField("trip_id", StringType(), nullable=False),
+    StructField("trip_headsign", StringType(), nullable=True),
+    StructField("trip_short_name", StringType(), nullable=True),
+    StructField("direction_id", StringType(), nullable=True),
+    StructField("block_id", StringType(), nullable=True),
+    StructField("shape_id", StringType(), nullable=True),
+    StructField("wheelchair_accessible", StringType(), nullable=True),
+    StructField("bikes_allowed", StringType(), nullable=True),
+])
+
+ESQUEMA_BRONZE_ROUTES = StructType([
+    StructField("route_id", StringType(), nullable=False),
+    StructField("agency_id", StringType(), nullable=True),
+    StructField("route_short_name", StringType(), nullable=True),
+    StructField("route_long_name", StringType(), nullable=True),
+    StructField("route_type", StringType(), nullable=True),
+    StructField("route_color", StringType(), nullable=True),
+    StructField("route_text_color", StringType(), nullable=True),
+    StructField("route_desc", StringType(), nullable=True),
+])
+
+ESQUEMA_BRONZE_CALENDAR = StructType([
+    StructField("service_id", StringType(), nullable=False),
+    StructField("monday", StringType(), nullable=True),
+    StructField("tuesday", StringType(), nullable=True),
+    StructField("wednesday", StringType(), nullable=True),
+    StructField("thursday", StringType(), nullable=True),
+    StructField("friday", StringType(), nullable=True),
+    StructField("saturday", StringType(), nullable=True),
+    StructField("sunday", StringType(), nullable=True),
+    StructField("start_date", StringType(), nullable=True),
+    StructField("end_date", StringType(), nullable=True),
+])
+
+ESQUEMA_BRONZE_CALENDAR_DATES = StructType([
+    StructField("service_id", StringType(), nullable=False),
+    StructField("date", StringType(), nullable=False),
+    StructField("exception_type", StringType(), nullable=False),
+])
 
 #TODO pasar estos puntos del recorrido a variables del proyecto
 #Se calcula el area de estaciones con los puntos de interes del recorrido
@@ -183,23 +253,6 @@ def obtener_calendario_viaje_excepciones(contenido_zip: bytes, ids_de_servicios:
     print(f"[gtfs_static] calendar_dates.txt: {len(excepciones_relevantes)} excepciones relevantes")
     return excepciones_relevantes
 
-def guardar_tabla_gtfs_estatico(spark: SparkSession, nombre_tabla: str, filas: list[dict]) -> None:
-    """Guarda una tabla del GTFS estatico en Bronze, sobrescribiendo la version anterior.
-
-    IMPORTANTE: usamos mode("overwrite") a proposito, no append. El GTFS estatico
-    es una foto que se sustituye entera cada vez que se descarga, no tiene sentido
-    acumular versiones antiguas como hacemos con los eventos de GTFS-RT.
-    """
-    if not filas:
-        print(f"[gtfs_static] {nombre_tabla}: 0 filas, no se escribe nada")
-        return
-
-    ruta_tabla = f"{get_lakehouse_root()}/bronze/{nombre_tabla}"
-    dataframe = spark.createDataFrame(filas)
-    dataframe.write.format("delta").mode("overwrite").save(ruta_tabla)
-    print(f"[gtfs_static] guardado {nombre_tabla} en {ruta_tabla}")
-
-
 def ingestar_gtfs_estatico(spark: SparkSession) -> None:
     """Descarga el GTFS estatico completo y guarda solo lo relevante para el CSD.
 
@@ -224,12 +277,30 @@ def ingestar_gtfs_estatico(spark: SparkSession) -> None:
     calendarios = obtener_calendario_viajes(contenido_zip, ids_de_servicios)
     excepciones_de_calendario = obtener_calendario_viaje_excepciones(contenido_zip, ids_de_servicios)
 
-    guardar_tabla_gtfs_estatico(spark, "bronze_gtfs_static_stops", paradas)
-    guardar_tabla_gtfs_estatico(spark, "bronze_gtfs_static_stop_times", horarios)
-    guardar_tabla_gtfs_estatico(spark, "bronze_gtfs_static_trips", viajes)
-    guardar_tabla_gtfs_estatico(spark, "bronze_gtfs_static_routes", lineas)
-    guardar_tabla_gtfs_estatico(spark, "bronze_gtfs_static_calendar", calendarios)
-    guardar_tabla_gtfs_estatico(spark, "bronze_gtfs_static_calendar_dates", excepciones_de_calendario)
+    write_bronze_snapshot(
+        spark.createDataFrame(paradas, schema=ESQUEMA_BRONZE_STOPS),
+        "bronze_gtfs_static_stops", source="real",
+    )
+    write_bronze_snapshot(
+        spark.createDataFrame(horarios, schema=ESQUEMA_BRONZE_STOP_TIMES),
+        "bronze_gtfs_static_stop_times", source="real",
+    )
+    write_bronze_snapshot(
+        spark.createDataFrame(viajes, schema=ESQUEMA_BRONZE_TRIPS),
+        "bronze_gtfs_static_trips", source="real",
+    )
+    write_bronze_snapshot(
+        spark.createDataFrame(lineas, schema=ESQUEMA_BRONZE_ROUTES),
+        "bronze_gtfs_static_routes", source="real",
+    )
+    write_bronze_snapshot(
+        spark.createDataFrame(calendarios, schema=ESQUEMA_BRONZE_CALENDAR),
+        "bronze_gtfs_static_calendar", source="real",
+    )
+    write_bronze_snapshot(
+        spark.createDataFrame(excepciones_de_calendario, schema=ESQUEMA_BRONZE_CALENDAR_DATES),
+        "bronze_gtfs_static_calendar_dates", source="real",
+    )
 
 if __name__ == "__main__":
     # Permite ejecutar la ingesta directamente desde PyCharm con el boton Run.

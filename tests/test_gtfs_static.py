@@ -5,8 +5,8 @@ import io
 import zipfile
 
 from multitudcsd.ingestion.gtfs_static import (
-    get_calendar_dates_for_trips,
-    get_calendar_for_trips,
+    obtener_calendario_viajes,
+    obtener_calendario_viaje_excepciones,
 )
 
 
@@ -30,7 +30,7 @@ CALENDAR_CSV = (
 def test_calendar_filtra_solo_los_servicios_de_los_viajes_guardados():
     contenido_zip = _zip_de_prueba({"calendar.txt": CALENDAR_CSV})
 
-    resultado = get_calendar_for_trips(contenido_zip, {"s_laborable", "s_sabado"})
+    resultado = obtener_calendario_viajes(contenido_zip, {"s_laborable", "s_sabado"})
 
     assert len(resultado) == 2
     assert {fila["service_id"] for fila in resultado} == {"s_laborable", "s_sabado"}
@@ -40,7 +40,7 @@ def test_calendar_devuelve_vacio_si_el_fichero_no_esta_en_el_zip():
     """Un feed GTFS puede traer solo calendar_dates.txt: la ingesta no debe romperse."""
     contenido_zip = _zip_de_prueba({"stops.txt": "stop_id\np1\n"})
 
-    assert get_calendar_for_trips(contenido_zip, {"s_laborable"}) == []
+    assert obtener_calendario_viajes(contenido_zip, {"s_laborable"}) == []
 
 
 def test_calendar_dates_conserva_el_tipo_de_excepcion():
@@ -51,7 +51,7 @@ def test_calendar_dates_conserva_el_tipo_de_excepcion():
     )
     contenido_zip = _zip_de_prueba({"calendar_dates.txt": csv_excepciones})
 
-    resultado = get_calendar_dates_for_trips(contenido_zip, {"s_sabado"})
+    resultado = obtener_calendario_viaje_excepciones(contenido_zip, {"s_sabado"})
 
     assert len(resultado) == 1
     assert resultado[0]["exception_type"] == "1"  # el csv se lee sin castear, eso es cosa de Silver

@@ -18,7 +18,7 @@ def get_table_path(layer: str, table_name: str) -> str:
 def add_ingest_metadata(df: DataFrame, source: str) -> DataFrame:
     """Anade las columnas de trazabilidad comunes a toda la capa Bronze.
 
-    - source: 'real' o 'synthetic'. El pipeline es agnostico al origen.
+    - source: 'real' o 'synthetic'. El pipeline es independiente al origen.
     - ingest_ts / ingest_date: cuando entro el dato, no cuando se produjo.
     """
     if source not in ("real", "synthetic"):
@@ -42,6 +42,18 @@ def write_bronze(df: DataFrame, table_name: str, source: str) -> None:
     )
     print(f"[storage] escritas {df_con_metadatos.count()} filas en {ruta}")
 
+def write_bronze_snapshot(df: DataFrame, table_name: str, source: str) -> None:
+   """Escribe en Bronze sobrescribiendo, para fuentes que son estaticas como la oferta de tpte.
+
+   El GTFS estatico no es un flujo de eventos: cada descarga sustituye entera a la
+   anterior.
+   """
+   df_con_metadatos = add_ingest_metadata(df, source)
+   ruta = get_table_path("bronze", table_name)
+   df_con_metadatos.write.format("delta").mode("overwrite").option(
+       "overwriteSchema", "true"
+   ).save(ruta)
+   print(f"[storage] sobrescritas {df_con_metadatos.count()} filas en {ruta}")
 
 def read_delta(spark: SparkSession, layer: str, table_name: str) -> DataFrame:
     """Lee una tabla Delta del lakehouse."""
