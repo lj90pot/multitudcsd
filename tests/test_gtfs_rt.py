@@ -1,10 +1,11 @@
 """Tests de la decodificacion del feed GTFS-RT de VBB."""
 
+#Imports
 import json
 
 from multitudcsd.ingestion.gtfs_rt import decode_feed, extract_trip_updates
 
-
+#Funciones
 def test_el_feed_de_ejemplo_se_decodifica(gtfs_rt_bytes):
     feed = decode_feed(gtfs_rt_bytes)
     assert len(feed.entity) > 0

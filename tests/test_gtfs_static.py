@@ -1,12 +1,20 @@
 """Tests de la ingesta del GTFS estatico.
 No se hacen en  red: el zip se construye en memoria."""
 
+#Imports
 import io
 import zipfile
 
+#Funciones
 from multitudcsd.ingestion.gtfs_static import (
-    obtener_calendario_viajes,
+    compute_recorrido_area,
+    esta_cerca_del_csd,
     obtener_calendario_viaje_excepciones,
+    obtener_calendario_viajes,
+    obtener_horarios_de_esas_paradas,
+    obtener_lineas_relevantes,
+    obtener_paradas_cerca_del_csd,
+    obtener_viajes_relevantes,
 )
 
 
@@ -37,7 +45,7 @@ def test_calendar_filtra_solo_los_servicios_de_los_viajes_guardados():
 
 
 def test_calendar_devuelve_vacio_si_el_fichero_no_esta_en_el_zip():
-    """Un feed GTFS puede traer solo calendar_dates.txt: la ingesta no debe romperse."""
+    """Un feed GTFS puede traer solo calendar_dates.txt: la ingesta sigue."""
     contenido_zip = _zip_de_prueba({"stops.txt": "stop_id\np1\n"})
 
     assert obtener_calendario_viajes(contenido_zip, {"s_laborable"}) == []

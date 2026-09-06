@@ -4,13 +4,15 @@ Igual que en bronze_to_silver: funciones puras, DataFrame -> DataFrame, sin toca
 disco. La lectura/escritura vive solo en el bloque __main__.
 """
 
+#Import
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
+from multitudcsd.config import FECHA_REFERENCIA
+
 UMBRAL_A_TIEMPO_SEGUNDOS = 60  # retraso <= 60s se considera "a tiempo"; decision documentada
-FECHA_CSD = "2026-07-25"  # dia del recorrido del CSD Berlin 2026; decision documentada
 
-
+#Funciones
 def build_gold_mobility_pressure(silver_bikes: DataFrame, silver_delays: DataFrame) -> DataFrame:
     """Indice de presion de movilidad: disponibilidad de bici y retraso, por celda y hora.
 
@@ -82,8 +84,8 @@ def build_gold_disruptions_by_cell(silver_disruptions: DataFrame) -> DataFrame:
     semanas o meses (ver el ejemplo del Paso 6), asi que esto filtra fuera los que ya
     habian terminado o los que empiezan despues del evento.
     """
-    inicio_del_dia = F.to_timestamp(F.lit(FECHA_CSD))
-    fin_del_dia = F.to_timestamp(F.lit(f"{FECHA_CSD} 23:59:59"))
+    inicio_del_dia = F.to_timestamp(F.lit(FECHA_REFERENCIA))
+    fin_del_dia = F.to_timestamp(F.lit(f"{FECHA_REFERENCIA} 23:59:59"))
 
     activos_durante_el_csd = silver_disruptions.filter(
         (F.col("valid_from") <= fin_del_dia) & (F.col("valid_to") >= inicio_del_dia)
@@ -135,6 +137,7 @@ def build_gold_transit_capacity(silver_transit_supply: DataFrame) -> DataFrame:
         )
     )
 
+#Bloque para ejecutar en pycharm local
 if __name__ == "__main__":
     from multitudcsd.config import get_spark_session
     from multitudcsd.storage import read_delta, write_gold

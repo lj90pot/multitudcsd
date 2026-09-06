@@ -5,6 +5,7 @@ Esta resolucion proporciona suficiente anonimizacion a la vez que
 suficiente detalle para el objeto del proyecto
 """
 
+#Imports
 import h3
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
@@ -12,7 +13,7 @@ from pyspark.sql.types import StringType
 
 RESOLUCION_H3 = 9
 
-
+#Funciones
 def compute_h3_cell(lat: float, lon: float, resolution: int = RESOLUCION_H3) -> str | None:
     """Devuelve el identificador de celda H3 para un punto (lat, lon).
 

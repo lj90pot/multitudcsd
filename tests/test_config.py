@@ -1,8 +1,10 @@
 """Comprueba que la configuracion resuelve rutas distintas segun el entorno."""
 
+#imports
 from multitudcsd.config import get_environment, get_lakehouse_root
+import pytest
 
-
+#funciones
 def test_entorno_local_por_defecto(monkeypatch):
     monkeypatch.delenv("ENV", raising=False)
     assert get_environment() == "local"
@@ -25,7 +27,8 @@ def test_databricks_usa_la_ruta_del_cluster(monkeypatch):
     monkeypatch.setenv("LAKEHOUSE_ROOT", "/Volumes/cat/esq/vol/lakehouse")
     assert get_lakehouse_root() == "/Volumes/cat/esq/vol/lakehouse"
 
-def test_la_raiz_se_puede_sobrescribir(monkeypatch):
+def test_la_raiz_se_puede_sobrescribir(monkeypatch, tmp_path):
+    """ La ruta se normaliza tambien en windows."""
     monkeypatch.setenv("ENV", "local")
-    monkeypatch.setenv("LAKEHOUSE_ROOT", "/tmp/otro_sitio")
-    assert get_lakehouse_root() == "/tmp/otro_sitio"
+    monkeypatch.setenv("LAKEHOUSE_ROOT", str(tmp_path))
+    assert get_lakehouse_root() == tmp_path.resolve().as_posix()

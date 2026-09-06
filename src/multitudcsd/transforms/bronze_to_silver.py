@@ -4,6 +4,8 @@ Cada build_silver_* es una funcion: recibe DataFrame de Bronze ya leidos y
 devuelve el DataFrame de Silver correspondiente. Eso permite testear con datos de ejemplo
 sin depender de que exista Bronze en el filesystem.
 """
+
+#Imports
 import json
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
@@ -18,6 +20,7 @@ from pyspark.sql.types import (
 )
 
 from multitudcsd.transforms.geo import add_h3_index
+from multitudcsd.config import DIA_SEMANA_REFERENCIA, FECHA_REFERENCIA_GTFS
 
 # BICIS
 ## Esquemas para parsear el payload_json de Bronze (GBFS)
@@ -40,7 +43,7 @@ ESQUEMA_INFO_JSON = StructType([
     StructField("capacity", IntegerType()),
 ])
 
-
+#Funciones
 def build_silver_bike_availability(
     bronze_status: DataFrame, bronze_info: DataFrame
 ) -> DataFrame:
@@ -207,14 +210,14 @@ ESQUEMA_VIZ_FEATURE_JSON = StructType([
     ])),
 ])
 
-FORMATO_FECHA_VIZ = "dd.MM.yyyy HH:mm"
+FORMATO_FECHA_VIZ = "dd.MM.yyyy HH:mm" #Formato aleman de fecha
 
 
 def build_silver_disruptions(bronze_viz: DataFrame) -> DataFrame:
     """Contruye los puntos de incidencias, con punto representativo, ventana de vigencia y h3_index.
 
-    disruption_id ya viene tipado desde Bronze (columna propia, no hace falta sacarlo
-    de properties.id otra vez). dropDuplicates por disruption_id: el mismo corte se
+    disruption_id ya viene desde Bronze (columna propia).
+    dropDuplicates por disruption_id: el mismo corte se
     vuelve a descargar con una nueva ingesta mientras siga activo asi que lo eliminamos,
     solo necesitamos una fila por incidencia
     """
@@ -242,10 +245,6 @@ def build_silver_disruptions(bronze_viz: DataFrame) -> DataFrame:
 
     return add_h3_index(silver, lat_col="lat", lon_col="lon")
 
-#TODO pasar estas variables a variables de proyecto
-FECHA_CSD_GTFS = "20260905"        # formato yyyyMMdd de calendar.txt / calendar_dates.txt
-DIA_SEMANA_CSD = "saturday"        # el 25 de julio de 2026 cae en sabado
-
 def build_active_service_ids(
     bronze_calendar: DataFrame, bronze_calendar_dates: DataFrame
 ) -> DataFrame:
@@ -259,13 +258,13 @@ def build_active_service_ids(
     """
     servicios_regulares = (
         bronze_calendar
-        .filter(F.col(DIA_SEMANA_CSD) == "1")
-        .filter(F.col("start_date") <= F.lit(FECHA_CSD_GTFS))
-        .filter(F.col("end_date") >= F.lit(FECHA_CSD_GTFS))
+        .filter(F.col(DIA_SEMANA_REFERENCIA) == "1")
+        .filter(F.col("start_date") <= F.lit(FECHA_REFERENCIA_GTFS))
+        .filter(F.col("end_date") >= F.lit(FECHA_REFERENCIA_GTFS))
         .select("service_id")
     )
 
-    excepciones_del_dia = bronze_calendar_dates.filter(F.col("date") == F.lit(FECHA_CSD_GTFS))
+    excepciones_del_dia = bronze_calendar_dates.filter(F.col("date") == F.lit(FECHA_REFERENCIA_GTFS))
     servicios_anadidos = excepciones_del_dia.filter(F.col("exception_type") == "1").select("service_id")
     servicios_suprimidos = excepciones_del_dia.filter(F.col("exception_type") == "2").select("service_id")
 
@@ -276,15 +275,13 @@ def build_active_service_ids(
         .distinct()
         .join(servicios_suprimidos, on="service_id", how="left_anti")
     )
-#TODO
-# Codigos GTFS de route_type. Los de una cifra son los basicos del estandar; los de
-# tres son los extendidos (Google/HVT), que VBB tambien puede publicar. Verificar los
-# valores reales del feed antes de darlos por buenos.
-ROUTE_TYPES_TRANVIA = ("0", "900")
-ROUTE_TYPES_METRO = ("1", "400", "402")
-ROUTE_TYPES_CERCANIAS = ("2", "100", "109")
-ROUTE_TYPES_BUS = ("3", "700", "715")
-ROUTE_TYPES_FERRY = ("4", "1000")
+
+#Codigos comprobados sobre Bronze. Codigos google/hvt.
+ROUTE_TYPES_BUS = ("700",)
+ROUTE_TYPES_SBAHN = ("109",)
+ROUTE_TYPES_TRAM = ("900",)
+ROUTE_TYPES_REGIO = ("100", "106")
+ROUTE_TYPES_UBAHN = ("400",)
 
 
 def build_silver_transit_supply(
@@ -355,16 +352,17 @@ def build_silver_transit_supply(
 
     con_modo = unido.withColumn(
         "transport_mode",
-        F.when(F.col("route_type").isin(*ROUTE_TYPES_TRANVIA), "tranvia")
-        .when(F.col("route_type").isin(*ROUTE_TYPES_METRO), "metro")
-        .when(F.col("route_type").isin(*ROUTE_TYPES_CERCANIAS), "cercanias")
-        .when(F.col("route_type").isin(*ROUTE_TYPES_BUS), "bus")
-        .when(F.col("route_type").isin(*ROUTE_TYPES_FERRY), "ferry")
+        F.when(F.col("route_type").isin(*ROUTE_TYPES_BUS), "bus")
+        .when(F.col("route_type").isin(*ROUTE_TYPES_SBAHN), "sbahn")
+        .when(F.col("route_type").isin(*ROUTE_TYPES_TRAM), "tram")
+        .when(F.col("route_type").isin(*ROUTE_TYPES_REGIO), "regio")
+        .when(F.col("route_type").isin(*ROUTE_TYPES_UBAHN), "ubahn")
         .otherwise("otro"),
     ).withColumn("source", F.lit("real"))
 
     return add_h3_index(con_modo, lat_col="lat", lon_col="lon")
 
+#Bloque para ejecutar en pycharm local
 if __name__ == "__main__":
     from multitudcsd.config import get_spark_session
     from multitudcsd.storage import read_delta, write_silver

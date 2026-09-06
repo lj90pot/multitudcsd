@@ -1,12 +1,13 @@
 """Tests del parseo del feed GBFS de Nextbike."""
 
+#Imports
 import json
 
 import pytest
 
 from multitudcsd.ingestion.gbfs import find_feed_url, parse_station_status
 
-
+#Funciones
 def test_encuentra_la_url_del_feed(gbfs_discovery_payload):
     url = find_feed_url(gbfs_discovery_payload, "station_status")
     assert url.startswith("http")

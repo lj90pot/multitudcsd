@@ -48,3 +48,24 @@ resolucion para modelar donde esta la gente y las estaciones
 # en una primera version se metian directamente las coordenadas que limitaban un rectangulo
 alrededor del recorrido. He mejorado el codigo para que cada año se puedan meter los puntos
 de interes del recorrido y las coordenadas se calculen automaticamente
+
+## Semana 3
+#corregido el dia. Los feeds en vivo no cubren el 25 de julio. Se coje un dia en septiembre 
+se ponen las fechas en config.py
+
+#probado y mejorado todos los test del tier 1. ingestar gtfs_estatico no tiene test debido a
+que usa funciones ya cubiertas por otros test.
+
+#clasificacion de los modos de transporte segun la red alemana. 
+No se incluyen medios de transporte fluviales
+
+#Kafka descartado como gestor de eventos. Kafka va en docker. tengo problemas de espacio 
+en el pc. Ademas en Azure tendria que montar kafka en confluence y ya no tengo la cuenta 
+gratuita o montar eventhubs que me consume los creditos mas rapidos. 
+La evolucion natural seria que los eventos se gestionaran con evenhub
+
+#Databricks jobs va a ser el orquestador de los jobs.
+
+#Silver y gold se ejecutan con overwrite. El evento dura pocas horas.
+La evolucion sera hacerlos incrementales para vender datos de movilidad a las aplicaciones
+como contrapartida por compartir datos durante el csd. Esto es el tier 3 que no esta desarrollado.
