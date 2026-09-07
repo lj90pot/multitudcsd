@@ -137,6 +137,56 @@ def build_gold_transit_capacity(silver_transit_supply: DataFrame) -> DataFrame:
         )
     )
 
+K_MINIMO_MENCIONES = 5  # umbral de k-anonimato: celda-hora con menos filas no se publica
+
+def build_gold_csd_activity(silver_mentions: DataFrame) -> DataFrame:
+    """Actividad social agregada por celda H3 y franja horaria.
+
+    Filtra un minimo de menciones por hora para que no sea posible identificar usuarios
+    en una celda
+    """
+    return (
+        silver_mentions
+        .filter(F.col("h3_index").isNotNull())
+        .groupBy("h3_index", "hour_of_day")
+        .agg(
+            F.count("*").alias("num_mentions"),
+            F.countDistinct("user_hash").alias("num_users"),
+            F.avg("sentiment").alias("avg_sentiment"),
+            F.avg(F.col("has_media").cast("double")).alias("pct_with_media"),
+        )
+        .filter(F.col("num_mentions") >= K_MINIMO_MENCIONES)
+    )
+
+
+def build_gold_mobility_vs_activity(
+    gold_activity: DataFrame,
+    gold_mobility_pressure: DataFrame,
+    gold_transit_capacity: DataFrame,
+) -> DataFrame:
+    """Cruza las menciones con la presion y la capacidad de transporte, por celda y hora.
+
+    Es la tabla que justifica el proyecto entero: pone en la misma fila un dato real
+    (retrasos, bicis, pasos programados) y uno sintetico (menciones)
+    Left join desde la actividad: interesa saber que pasaba en transporte donde habia
+    gente
+    """
+    # La capacidad viene abierta por modo; aqui hace falta el total de la celda y hora.
+    capacidad_por_celda = (
+        gold_transit_capacity
+        .groupBy("h3_index", F.col("scheduled_hour").alias("hour_of_day"))
+        .agg(
+            F.sum("num_scheduled_stops").alias("num_scheduled_stops"),
+            F.sum("num_routes").alias("num_routes"),
+        )
+    )
+
+    return (
+        gold_activity
+        .join(gold_mobility_pressure, on=["h3_index", "hour_of_day"], how="left")
+        .join(capacidad_por_celda, on=["h3_index", "hour_of_day"], how="left")
+    )
+
 #Bloque para ejecutar en pycharm local
 if __name__ == "__main__":
     from multitudcsd.config import get_spark_session
@@ -146,7 +196,8 @@ if __name__ == "__main__":
 
     silver_bikes = read_delta(sesion, "silver", "silver_bike_availability")
     silver_delays = read_delta(sesion, "silver", "silver_transit_delays")
-    write_gold(build_gold_mobility_pressure(silver_bikes, silver_delays), "gold_mobility_pressure")
+    gold_mobility_pressure = build_gold_mobility_pressure(silver_bikes, silver_delays)
+    write_gold(gold_mobility_pressure, "gold_mobility_pressure")
     write_gold(build_gold_line_reliability(silver_delays), "gold_line_reliability")
 
     silver_disruptions = read_delta(sesion, "silver", "silver_disruptions")
@@ -154,6 +205,17 @@ if __name__ == "__main__":
 
     silver_transit_supply = read_delta(sesion, "silver", "silver_transit_supply")
     write_gold(build_gold_station_services(silver_transit_supply), "gold_station_services")
-    write_gold(build_gold_transit_capacity(silver_transit_supply), "gold_transit_capacity")
+    gold_transit_capacity = build_gold_transit_capacity(silver_transit_supply)
+    write_gold(gold_transit_capacity, "gold_transit_capacity")
+
+    silver_mentions = read_delta(sesion, "silver", "silver_csd_mentions")
+    gold_activity = build_gold_csd_activity(silver_mentions)
+    write_gold(gold_activity, "gold_csd_activity")
+    write_gold(
+        build_gold_mobility_vs_activity(
+            gold_activity, gold_mobility_pressure, gold_transit_capacity
+        ),
+        "gold_mobility_vs_activity",
+    )
 
     sesion.stop()

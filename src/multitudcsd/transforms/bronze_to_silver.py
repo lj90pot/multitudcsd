@@ -362,6 +362,31 @@ def build_silver_transit_supply(
 
     return add_h3_index(con_modo, lat_col="lat", lon_col="lon")
 
+def build_silver_mentions(bronze_mentions: DataFrame) -> DataFrame:
+    """Silver para las menciones, y les anade celda H3 y franja horaria.
+
+    Bronze ya guarda las columnas con tipos porque el stream lee con esquema explicito, asi
+    que aqui solo queda convertir event_ts a timestamp, quitar repetidos y geolocalizar.
+    """
+    tipado = (
+        bronze_mentions
+        .select(
+            "mention_id",
+            F.to_timestamp("event_ts").alias("event_ts"),
+            "lat",
+            "lon",
+            "platform",
+            "language",
+            "sentiment",
+            "has_media",
+            "user_hash",
+            "source",
+        )
+        .dropDuplicates(["mention_id"])
+        .withColumn("hour_of_day", F.hour("event_ts"))
+    )
+    return add_h3_index(tipado, lat_col="lat", lon_col="lon")
+
 #Bloque para ejecutar en pycharm local
 if __name__ == "__main__":
     from multitudcsd.config import get_spark_session
@@ -394,5 +419,8 @@ if __name__ == "__main__":
         bronze_stop_times, bronze_trips, bronze_routes, bronze_stops, servicios_activos
     )
     write_silver(supply, "silver_transit_supply")
+
+    bronze_mentions = read_delta(sesion, "bronze", "bronze_mentions")
+    write_silver(bronze_mentions, "silver_mentions")
 
     sesion.stop()

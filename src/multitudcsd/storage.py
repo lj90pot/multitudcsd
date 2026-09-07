@@ -3,7 +3,7 @@
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
-from multitudcsd.config import get_lakehouse_root
+from multitudcsd.config import get_lakehouse_root, get_checkpoints_root
 
 CAPAS_VALIDAS = ("bronze", "silver", "gold")
 
@@ -72,3 +72,24 @@ def write_gold(df: DataFrame, table_name: str) -> None:
     ruta = get_table_path("gold", table_name)
     df.write.format("delta").mode("overwrite").option("overwriteSchema","true").save(ruta)
     print(f"[storage] escritas {df.count()} filas en {ruta}")
+
+def write_bronze_stream(df: DataFrame, table_name: str, checkpoint_name: str, source: str) -> None:
+    """Vuelca un DataFrame de streaming en Bronze y espera a que termine.
+
+    trigger(availableNow=True) procesa los ficheros pendientes y para en vez de quedar
+    corriendo y esperando. Hecho asi para procesar los lotes y pasar el test sin
+    que se quede esperando. Checkpoint permite seguir sin reprocesar lo leido.
+    """
+    df_con_metadatos = add_ingest_metadata(df, source)
+    ruta = get_table_path("bronze", table_name)
+
+    consulta = (
+        df_con_metadatos.writeStream.format("delta")
+        .outputMode("append")
+        .option("checkpointLocation", f"{get_checkpoints_root()}/{checkpoint_name}")
+        .partitionBy("ingest_date")
+        .trigger(availableNow=True)
+        .start(ruta)
+    )
+    consulta.awaitTermination()
+    print(f"[storage] stream volcado en {ruta}")
