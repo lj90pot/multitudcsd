@@ -1,12 +1,14 @@
 """Tests de http_request. Ningun test toca la red"""
 
 #Imports
+
 import pytest
 import requests
 
 from multitudcsd.ingestion import http_request
 
 #Funciones
+
 class RespuestaFalsa:
     """Imita requests.Response que usa download_bytes."""
 

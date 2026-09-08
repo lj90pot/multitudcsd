@@ -69,3 +69,10 @@ La evolucion natural seria que los eventos se gestionaran con evenhub
 #Silver y gold se ejecutan con overwrite. El evento dura pocas horas.
 La evolucion sera hacerlos incrementales para vender datos de movilidad a las aplicaciones
 como contrapartida por compartir datos durante el csd. Esto es el tier 3 que no esta desarrollado.
+
+
+#.github/workflows va a testear que los test pasan cuando haces push en github. 
+es parte del modelo CI / CD 
+
+#ruff va a comprobar el estilo de escribir codigo. Es como otro test para el estilo del
+codigo.

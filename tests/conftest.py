@@ -1,6 +1,7 @@
 """Fixtures compartidas por todos los tests."""
 
 #Imports
+
 import json
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from multitudcsd.config import get_spark_session
 DIRECTORIO_FIXTURES = Path(__file__).parent / "fixtures"
 
 #Funciones
+
 @pytest.fixture(scope="session")
 def spark():
     """SparkSession local, de toda la sesion de tests"""

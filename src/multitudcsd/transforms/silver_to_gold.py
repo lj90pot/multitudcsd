@@ -155,7 +155,10 @@ def build_gold_csd_activity(silver_mentions: DataFrame) -> DataFrame:
             F.avg("sentiment").alias("avg_sentiment"),
             F.avg(F.col("has_media").cast("double")).alias("pct_with_media"),
         )
-        .filter(F.col("num_mentions") >= K_MINIMO_MENCIONES)
+        .filter(
+            (F.col("num_mentions") >= K_MINIMO_MENCIONES)
+            & (F.col("num_users") >= K_MINIMO_MENCIONES)
+        )
     )
 
 

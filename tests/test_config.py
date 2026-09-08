@@ -1,10 +1,12 @@
 """Comprueba que la configuracion resuelve rutas distintas segun el entorno."""
 
 #imports
+
 from multitudcsd.config import get_environment, get_lakehouse_root
 import pytest
 
 #funciones
+
 def test_entorno_local_por_defecto(monkeypatch):
     monkeypatch.delenv("ENV", raising=False)
     assert get_environment() == "local"

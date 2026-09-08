@@ -1,7 +1,7 @@
 """Lanzador de todas las ingestas de la etapa 1 hacia la capa Bronze."""
 
 from multitudcsd.config import get_spark_session
-from multitudcsd.ingestion.gbfs import ingest_station_status
+from multitudcsd.ingestion.gbfs import ingest_station_information, ingest_station_status
 from multitudcsd.ingestion.gtfs_rt import ingest_trip_updates
 from multitudcsd.ingestion.gtfs_static import ingestar_gtfs_estatico
 from multitudcsd.ingestion.viz import ingest_disruptions
@@ -20,7 +20,8 @@ def run_all_ingestions(spark) -> dict:
 
     for nombre, funcion_de_ingesta in [
         ("gtfs_rt", ingest_trip_updates),
-        ("gbfs", ingest_station_status),
+        ("gbfs_status", ingest_station_status),
+        ("gbfs_information", ingest_station_information),
         ("viz", ingest_disruptions),
     ]:
         print(f"[run_all] --- iniciando ingesta '{nombre}' ---")
@@ -37,10 +38,14 @@ def run_all_ingestions(spark) -> dict:
 
     return resultados
 
+#Main preparado asi para que funcione el pyproject.toml
+def main() -> None:
+    """Punto de entrada de la capa Bronze. Lo ejecuta el Makefile, el Job y el wheel."""
+    sesion = get_spark_session("ingest-bronze")
+    resumen = run_all_ingestions(sesion)
+    print(f"[run_bronze] resumen de filas escritas: {resumen}")
+    sesion.stop()
+
 
 if __name__ == "__main__":
-    # Permite ejecutar toda la ingesta desde PyCharm con el boton Run.
-    sesion = get_spark_session("ingest-all")
-    resumen = run_all_ingestions(sesion)
-    print(f"[run_all] resumen de filas escritas: {resumen}")
-    sesion.stop()
+    main()

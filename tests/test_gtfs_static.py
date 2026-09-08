@@ -2,10 +2,12 @@
 No se hacen en  red: el zip se construye en memoria."""
 
 #Imports
+
 import io
 import zipfile
 
 #Funciones
+#TODO algunas funciones no tienen test
 from multitudcsd.ingestion.gtfs_static import (
     compute_recorrido_area,
     esta_cerca_del_csd,

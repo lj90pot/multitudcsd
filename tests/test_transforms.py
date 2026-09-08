@@ -1,6 +1,7 @@
 """Tests Transforms Bronze -> Silver -> Gold."""
 
 #Imports
+
 import json
 from datetime import datetime
 
@@ -12,6 +13,7 @@ from multitudcsd.transforms.bronze_to_silver import (
     build_silver_transit_delays,
     build_silver_transit_supply,
     extract_representative_point,
+    build_silver_mentions
 )
 from multitudcsd.transforms.silver_to_gold import (
     build_gold_disruptions_by_cell,
@@ -19,9 +21,12 @@ from multitudcsd.transforms.silver_to_gold import (
     build_gold_mobility_pressure,
     build_gold_station_services,
     build_gold_transit_capacity,
+    build_gold_csd_activity,
+    build_gold_mobility_vs_activity,
 )
 
 #Funciones
+
 def _fila_calendar(service_id, saturday):
     return (service_id, saturday, "20260601", "20261231")
 
@@ -182,8 +187,7 @@ def test_gold_capacity_agrega_por_celda_franja_y_modo(spark):
 # Silver: bicis
 
 def _fila_status(station_id, bikes, docks, last_reported):
-    #funcion auxiliar
-    """Bronze guarda el JSON de la estacion en payload_json."""
+    """funcion auxiliar. Bronze guarda el JSON de la estacion en payload_json."""
     return (json.dumps({
         "station_id": station_id,
         "num_bikes_available": bikes,
@@ -220,10 +224,13 @@ def test_bikes_cruza_disponibilidad_con_ubicacion_y_geolocaliza(spark):
 def test_bikes_descarta_la_estacion_sin_informacion_estatica(spark):
     """Inner join: sin lat/lon no se sabe donde esta la estacion. No se guarda"""
     status = spark.createDataFrame(
-        [_fila_status("e1", 3, 5, 1757000000), _fila_status("e_fantasma", 1, 1, 1757000000)],
+        [_fila_status("e1", 3, 5, 1757000000),
+         _fila_status("e_fantasma", 1, 1, 1757000000)],
         ["payload_json"],
     )
-    info = spark.createDataFrame([_fila_info("e1", "52.5163", "13.3777", 10)], ["payload_json"])
+    info = spark.createDataFrame([
+        _fila_info("e1", "52.5163", "13.3777", 10)],
+        ["payload_json"])
 
     resultado = build_silver_bike_availability(status, info).collect()
 
@@ -234,7 +241,9 @@ def test_bikes_deduplica_la_misma_lectura_repetida(spark):
     """La misma estacion con el mismo last_reported entra dos veces si se ingesta dos veces."""
     lectura = _fila_status("e1", 3, 5, 1757000000)
     status = spark.createDataFrame([lectura, lectura], ["payload_json"])
-    info = spark.createDataFrame([_fila_info("e1", "52.5163", "13.3777", 10)], ["payload_json"])
+    info = spark.createDataFrame([
+        _fila_info("e1", "52.5163", "13.3777", 10)],
+        ["payload_json"])
 
     assert build_silver_bike_availability(status, info).count() == 1
 
@@ -427,10 +436,14 @@ CAMPOS_DISRUPTIONS_GOLD = "h3_index string, valid_from timestamp, valid_to times
 
 def test_gold_disruptions_solo_cuenta_los_cortes_vigentes_ese_dia(spark):
     disruptions = spark.createDataFrame(
-        [("celda_a", datetime(2026, 8, 1), datetime(2026, 10, 1)),   # vigente
-         ("celda_a", datetime(2026, 9, 5, 20), datetime(2026, 9, 6)),  # empieza ese dia: vale
-         ("celda_b", datetime(2026, 1, 1), datetime(2026, 2, 1)),    # ya termino
-         ("celda_b", datetime(2026, 12, 1), datetime(2026, 12, 31))],  # aun no empieza
+        # vigente
+        [("celda_a", datetime(2026, 8, 1), datetime(2026, 10, 1)),
+         # empieza ese dia
+         ("celda_a", datetime(2026, 9, 5, 20), datetime(2026, 9, 6)),
+         # ya paso
+         ("celda_b", datetime(2026, 1, 1), datetime(2026, 2, 1)),
+         # aun no empezo
+         ("celda_b", datetime(2026, 12, 1), datetime(2026, 12, 31))],
         CAMPOS_DISRUPTIONS_GOLD,
     )
 
@@ -460,3 +473,174 @@ def test_gold_station_services_agrega_por_estacion_y_linea(spark):
                  for f in build_gold_station_services(supply).collect()}
 
     assert resultado == {("U2", 2, 10, 14), ("U1", 1, 12, 12)}
+
+
+#Tier 2
+
+CAMPOS_BRONZE_MENCIONES = (
+    "mention_id string, event_ts string, lat double, lon double, platform string, "
+    "language string, sentiment double, has_media boolean, user_hash string, source string"
+)
+
+# Punto real del recorrido (Nollendorfplatz) para que la udf de H3 devuelva celda.
+LAT_NOLLENDORFPLATZ = 52.4994
+LON_NOLLENDORFPLATZ = 13.3542
+
+
+def _fila_mencion(mention_id, event_ts, sentiment=0.5, user_hash="abc123"):
+    return (
+        mention_id,
+        event_ts,
+        LAT_NOLLENDORFPLATZ,
+        LON_NOLLENDORFPLATZ,
+        "mastodon",
+        "de",
+        sentiment,
+        True,
+        user_hash,
+        "synthetic",
+    )
+
+
+def test_silver_mentions_tipa_deduplica_y_geolocaliza(spark):
+    """El stream puede reprocesar un fichero si se borra el checkpoint, dedupe por id."""
+    bronze = spark.createDataFrame(
+        [
+            _fila_mencion("men_000001", "2026-09-05T14:30:00"),
+            _fila_mencion("men_000001", "2026-09-05T14:30:00"),  # repetida
+            _fila_mencion("men_000002", "2026-09-05T17:05:00"),
+        ],
+        CAMPOS_BRONZE_MENCIONES,
+    )
+
+    resultado = {fila["mention_id"]: fila for fila in build_silver_mentions(bronze).collect()}
+
+    assert set(resultado) == {"men_000001", "men_000002"}
+    assert resultado["men_000001"]["hour_of_day"] == 14
+    assert resultado["men_000002"]["hour_of_day"] == 17
+    assert resultado["men_000001"]["h3_index"] is not None
+
+
+def test_silver_mentions_deja_h3_nulo_si_no_hay_coordenadas(spark):
+    """Una mencion sin coordenadas no para el job: entra con h3_index nulo."""
+    bronze = spark.createDataFrame(
+        [("men_000003", "2026-09-05T14:30:00", None, None, "x", "en", 0.1, False, "h", "synthetic")],
+        CAMPOS_BRONZE_MENCIONES,
+    )
+
+    assert build_silver_mentions(bronze).collect()[0]["h3_index"] is None
+
+
+CAMPOS_SILVER_MENCIONES = (
+    "h3_index string, hour_of_day int, sentiment double, has_media boolean, user_hash string"
+)
+
+
+def test_gold_activity_descarta_las_celdas_por_debajo_del_umbral(spark):
+    """La salvaguarda de privacidad  comprobada: k = 5 celdas-hora minimas.
+
+    Una celda  con cuatro menciones no se publica. Con seis, si.
+    """
+    filas = [("celda_poca", 14, 0.5, True, f"u{numero}") for numero in range(4)]
+    filas += [("celda_muchas", 14, 0.5, True, f"u{numero}") for numero in range(6)]
+    silver = spark.createDataFrame(filas, CAMPOS_SILVER_MENCIONES)
+
+    resultado = {fila["h3_index"]: fila for fila in build_gold_csd_activity(silver).collect()}
+
+    assert set(resultado) == {"celda_muchas"}
+    assert resultado["celda_muchas"]["num_mentions"] == 6
+    assert resultado["celda_muchas"]["num_users"] == 6
+
+
+def test_gold_activity_agrega_por_celda_y_hora(spark):
+    """La misma celda en dos horas distintas son dos filas"""
+    filas = [("celda_a", 14, 1.0, True, "u1")] * 5 + [("celda_a", 17, 0.0, False, "u1")] * 5
+    silver = spark.createDataFrame(filas, CAMPOS_SILVER_MENCIONES)
+
+    resultado = {fila["hour_of_day"]: fila for fila in build_gold_csd_activity(silver).collect()}
+
+    assert set(resultado) == {14, 17}
+    assert resultado[14]["avg_sentiment"] == 1.0
+    assert resultado[14]["pct_with_media"] == 1.0
+    assert resultado[17]["pct_with_media"] == 0.0
+    # countDistinct sobre user_hash: cinco menciones del mismo usuario son un usuario.
+    assert resultado[14]["num_users"] == 1
+
+
+def test_gold_activity_descarta_las_menciones_sin_celda(spark):
+    """Sin h3_index no hay agregacion espacial posible"""
+    filas = [(None, 14, 0.5, True, f"u{numero}") for numero in range(10)]
+    silver = spark.createDataFrame(filas, CAMPOS_SILVER_MENCIONES)
+
+    assert build_gold_csd_activity(silver).count() == 0
+
+
+CAMPOS_GOLD_ACTIVITY = (
+    "h3_index string, hour_of_day int, num_mentions long, num_users long, "
+    "avg_sentiment double, pct_with_media double"
+)
+CAMPOS_GOLD_PRESSURE = (
+    "h3_index string, hour_of_day int, avg_bikes_available double, avg_delay_seconds double"
+)
+CAMPOS_GOLD_CAPACITY = (
+    "h3_index string, scheduled_hour int, transport_mode string, "
+    "num_scheduled_stops long, num_routes long"
+)
+
+
+def test_mobility_vs_activity_conserva_la_actividad_sin_datos_de_transporte(spark):
+    """Left join desde la actividad: interesa el transporte donde hubo gente.
+
+    Una celda con menciones y sin retrasos ni oferta programada esta con nulos.
+    """
+    actividad = spark.createDataFrame(
+        [("celda_con_transporte", 14, 10, 8, 0.5, 0.4),
+         ("celda_sin_transporte", 14, 7, 6, 0.2, 0.1)],
+        CAMPOS_GOLD_ACTIVITY,
+    )
+    presion = spark.createDataFrame(
+        [("celda_con_transporte", 14, 3.0, 120.0)], CAMPOS_GOLD_PRESSURE
+    )
+    capacidad = spark.createDataFrame(
+        [("celda_con_transporte", 14, "metro", 40, 2)], CAMPOS_GOLD_CAPACITY
+    )
+
+    resultado = {
+        fila["h3_index"]: fila
+        for fila in build_gold_mobility_vs_activity(actividad, presion, capacidad).collect()
+    }
+
+    assert set(resultado) == {"celda_con_transporte", "celda_sin_transporte"}
+    assert resultado["celda_sin_transporte"]["num_mentions"] == 7
+    assert resultado["celda_sin_transporte"]["avg_delay_seconds"] is None
+    assert resultado["celda_sin_transporte"]["num_scheduled_stops"] is None
+
+
+def test_mobility_vs_activity_suma_la_capacidad_de_todos_los_modos(spark):
+    """La capacidad viene por modo; en el cruce hace falta el total de la celda."""
+    actividad = spark.createDataFrame([("celda_a", 14, 10, 8, 0.5, 0.4)], CAMPOS_GOLD_ACTIVITY)
+    presion = spark.createDataFrame([("celda_a", 14, 3.0, 120.0)], CAMPOS_GOLD_PRESSURE)
+    capacidad = spark.createDataFrame(
+        [("celda_a", 14, "metro", 40, 2), ("celda_a", 14, "bus", 15, 3)],
+        CAMPOS_GOLD_CAPACITY,
+    )
+
+    fila = build_gold_mobility_vs_activity(actividad, presion, capacidad).collect()[0]
+
+    assert fila["num_scheduled_stops"] == 55
+    assert fila["num_routes"] == 5
+    # Una sola fila: el cruce no puede duplicar la actividad al abrir por modo.
+    assert build_gold_mobility_vs_activity(actividad, presion, capacidad).count() == 1
+
+
+def test_mobility_vs_activity_no_cruza_horas_distintas(spark):
+    """El join es por celda Y hora: la capacidad de las 17 no entra en la fila de las 14."""
+    actividad = spark.createDataFrame([("celda_a", 14, 10, 8, 0.5, 0.4)], CAMPOS_GOLD_ACTIVITY)
+    presion = spark.createDataFrame([("celda_a", 17, 3.0, 120.0)], CAMPOS_GOLD_PRESSURE)
+    capacidad = spark.createDataFrame([("celda_a", 17, "metro", 40, 2)], CAMPOS_GOLD_CAPACITY)
+
+    fila = build_gold_mobility_vs_activity(actividad, presion, capacidad).collect()[0]
+
+    assert fila["hour_of_day"] == 14
+    assert fila["avg_delay_seconds"] is None
+    assert fila["num_scheduled_stops"] is None

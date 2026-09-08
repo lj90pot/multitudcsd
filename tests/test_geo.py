@@ -1,9 +1,11 @@
 """Tests de la indexacion H3. Resolucion unica del proyecto: 9."""
 
 #Imports
+
 from multitudcsd.transforms.geo import RESOLUCION_H3, add_h3_index, compute_h3_cell
 
 #Funciones
+
 def test_un_punto_de_berlin_devuelve_una_celda():
     celda = compute_h3_cell(52.5163, 13.3777)
     assert isinstance(celda, str)

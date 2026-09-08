@@ -420,7 +420,7 @@ if __name__ == "__main__":
     )
     write_silver(supply, "silver_transit_supply")
 
-    bronze_mentions = read_delta(sesion, "bronze", "bronze_mentions")
-    write_silver(bronze_mentions, "silver_mentions")
+    bronze_mentions = read_delta(sesion, "bronze", "bronze_csd_mentions")
+    write_silver(build_silver_mentions(bronze_mentions), "silver_csd_mentions")
 
     sesion.stop()
