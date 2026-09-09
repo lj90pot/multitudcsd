@@ -50,7 +50,8 @@ def find_feed_url(discovery_payload: dict, feed_name: str, language: str = "en")
 
 
 def parse_station_status(status_payload: dict, source_url: str) -> list[dict]:
-    """Convierte el payload de station_status en una lista de filas para Bronze."""
+    """Convierte el payload de station_status y station_information
+     en una lista de filas para Bronze."""
     last_updated = str(status_payload.get("last_updated", ""))
     estaciones = status_payload["data"]["stations"]
 

@@ -44,6 +44,6 @@ def gtfs_rt_bytes() -> bytes:
 
 @pytest.fixture
 def viz_disruptions_payload() -> dict:
-    """Payload de ejemplo del fichero de discovery GBFS."""
+    """Payload de ejemplo del fichero de discovery VIZ."""
     with open(DIRECTORIO_FIXTURES / "viz_disruptions_sample.json", encoding="utf-8") as f:
         return json.load(f)

@@ -28,7 +28,7 @@ def build_gold_mobility_pressure(silver_bikes: DataFrame, silver_delays: DataFra
         .agg(
             F.avg("num_bikes_available").alias("avg_bikes_available"),
             F.avg("num_docks_available").alias("avg_docks_available"),
-            F.count("*").alias("num_lecturas_bici"),
+            F.count("*").alias("num_bike_readings"),
         )
     )
 
@@ -44,7 +44,7 @@ def build_gold_mobility_pressure(silver_bikes: DataFrame, silver_delays: DataFra
         .agg(
             F.avg("delay_seconds").alias("avg_delay_seconds"),
             F.avg("a_tiempo").alias("pct_on_time"),
-            F.count("*").alias("num_actualizaciones_retraso"),
+            F.count("*").alias("num_delay_updates"),
         )
     )
 
@@ -70,7 +70,7 @@ def build_gold_line_reliability(silver_delays: DataFrame) -> DataFrame:
         .agg(
             F.avg("delay_seconds").alias("avg_delay_seconds"),
             F.avg("a_tiempo").alias("pct_on_time"),
-            F.count("*").alias("num_actualizaciones"),
+            F.count("*").alias("num_updates"),
         )
     )
 
@@ -81,7 +81,7 @@ def build_gold_disruptions_by_cell(silver_disruptions: DataFrame) -> DataFrame:
     Un corte esta activo el dia del CSD si su ventana [valid_from, valid_to] toca ese
     dia (no hace falta que se solape con una hora concreta: basta con que el intervalo
     incluya el 25 de julio de 2026 en algun momento). Muchos cortes de obra duran
-    semanas o meses (ver el ejemplo del Paso 6), asi que esto filtra fuera los que ya
+    semanas o meses, asi que esto filtra fuera los que ya
     habian terminado o los que empiezan despues del evento.
     """
     inicio_del_dia = F.to_timestamp(F.lit(FECHA_REFERENCIA))
@@ -139,11 +139,10 @@ def build_gold_transit_capacity(silver_transit_supply: DataFrame) -> DataFrame:
 
 K_MINIMO_MENCIONES = 5  # umbral de k-anonimato: celda-hora con menos filas no se publica
 
-def build_gold_csd_activity(silver_mentions: DataFrame) -> DataFrame:
-    """Actividad social agregada por celda H3 y franja horaria.
+def aggregate_mentions_by_cell_hour(silver_mentions: DataFrame) -> DataFrame:
+    """Agrega las menciones por celda H3 y hora, sin filtrar el umbral k.
 
-    Filtra un minimo de menciones por hora para que no sea posible identificar usuarios
-    en una celda
+    Se separa del filtro a proposito para ver count_k_anonymity_effect).
     """
     return (
         silver_mentions
@@ -155,11 +154,63 @@ def build_gold_csd_activity(silver_mentions: DataFrame) -> DataFrame:
             F.avg("sentiment").alias("avg_sentiment"),
             F.avg(F.col("has_media").cast("double")).alias("pct_with_media"),
         )
-        .filter(
-            (F.col("num_mentions") >= K_MINIMO_MENCIONES)
-            & (F.col("num_users") >= K_MINIMO_MENCIONES)
-        )
     )
+
+def apply_k_anonymity(actividad_agregada: DataFrame) -> DataFrame:
+    """Descarta las celdas-hora con menos de K_MINIMO_MENCIONES menciones."""
+    return actividad_agregada.filter(F.col("num_mentions") >= K_MINIMO_MENCIONES)
+
+
+def count_k_anonymity_effect(actividad_agregada: DataFrame) -> dict:
+    """Cuenta cuantas filas filtra el umbral de k-anonimato y lo imprime por consola.
+    """
+    resumen = actividad_agregada.agg(
+        F.count("*").alias("celdas_totales"),
+        F.sum(
+            F.when(F.col("num_mentions") >= K_MINIMO_MENCIONES, 1).otherwise(0)
+        ).alias("celdas_publicadas"),
+        F.sum("num_mentions").alias("menciones_totales"),
+        F.sum(
+            F.when(F.col("num_mentions") >= K_MINIMO_MENCIONES, F.col("num_mentions"))
+            .otherwise(0)
+        ).alias("menciones_publicadas"),
+    ).collect()[0]
+
+    # Una tabla vacia deja los sum() a null: se normaliza a 0 para no romper el print.
+    celdas_totales = resumen["celdas_totales"]
+    celdas_publicadas = resumen["celdas_publicadas"] or 0
+    menciones_totales = resumen["menciones_totales"] or 0
+    menciones_publicadas = resumen["menciones_publicadas"] or 0
+
+    metricas = {
+        "k": K_MINIMO_MENCIONES,
+        "celdas_hora_publicadas": celdas_publicadas,
+        "celdas_hora_descartadas": celdas_totales - celdas_publicadas,
+        "menciones_suprimidas": menciones_totales - menciones_publicadas,
+        "pct_menciones_suprimidas": (
+            round(100 * (menciones_totales - menciones_publicadas) / menciones_totales, 1)
+            if menciones_totales
+            else 0.0
+        ),
+    }
+
+    porcentaje = f"{metricas['pct_menciones_suprimidas']:.1f}".replace(".", ",")
+    print(
+        f"[gold] k-anonimato (k={metricas['k']}): "
+        f"{metricas['celdas_hora_publicadas']} celdas-hora publicadas, "
+        f"{metricas['celdas_hora_descartadas']} descartadas "
+        f"({metricas['menciones_suprimidas']} menciones suprimidas, {porcentaje}%)"
+    )
+    return metricas
+
+
+def build_gold_csd_activity(silver_mentions: DataFrame) -> DataFrame:
+    """Actividad social agregada por celda H3 y franja horaria, con umbral k aplicado.
+
+    Filtra un minimo de menciones por hora para que no sea posible identificar
+    usuarios en una celda.
+    """
+    return apply_k_anonymity(aggregate_mentions_by_cell_hour(silver_mentions))
 
 
 def build_gold_mobility_vs_activity(
@@ -180,7 +231,11 @@ def build_gold_mobility_vs_activity(
         .groupBy("h3_index", F.col("scheduled_hour").alias("hour_of_day"))
         .agg(
             F.sum("num_scheduled_stops").alias("num_scheduled_stops"),
-            F.sum("num_routes").alias("num_routes"),
+            F.sum("num_routes").alias("num_routes_all_modes"),
+        )
+        .withColumn(
+            "mentions_per_scheduled_stop",
+            F.col("num_mentions") / F.nullif(F.col("num_scheduled_stops"), F.lit(0)),
         )
     )
 
@@ -212,7 +267,9 @@ if __name__ == "__main__":
     write_gold(gold_transit_capacity, "gold_transit_capacity")
 
     silver_mentions = read_delta(sesion, "silver", "silver_csd_mentions")
-    gold_activity = build_gold_csd_activity(silver_mentions)
+    aggregated_activity = aggregate_mentions_by_cell_hour(silver_mentions)
+    count_k_anonymity_effect(aggregated_activity)
+    gold_activity = apply_k_anonymity(aggregated_activity)
     write_gold(gold_activity, "gold_csd_activity")
     write_gold(
         build_gold_mobility_vs_activity(

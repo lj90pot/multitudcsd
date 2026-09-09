@@ -12,9 +12,9 @@ HADOOP_HOME_WINDOWS = r"C:\Hadoop"
 # Parametros del evento
 #El csd 2026 ocurrio el 25 de julio. Ya ha pasado mientras se desarrollaba el proyecto.
 #se usa otro sabado. Pero se puede usar para otros eventos cambiando estas variables
-FECHA_REFERENCIA = "2026-09-05"
-FECHA_REFERENCIA_GTFS = "20260905"   # mismo dia en el formato yyyyMMdd para GTFS
-DIA_SEMANA_REFERENCIA = "saturday"
+FECHA_REFERENCIA = "2026-09-08"
+FECHA_REFERENCIA_GTFS = "20260908"   # mismo dia en el formato yyyyMMdd para GTFS
+DIA_SEMANA_REFERENCIA = "wednesday"
 
 # Puntos del recorrido
 #Se puede usar para cambiar el evento por otro

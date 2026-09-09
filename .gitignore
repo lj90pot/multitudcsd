@@ -11,3 +11,4 @@ mlruns/
 .pytest_cache/
 .ruff_cache/
 spark-warehouse/
+docs/kafka_demo/.env

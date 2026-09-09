@@ -76,3 +76,16 @@ es parte del modelo CI / CD
 
 #ruff va a comprobar el estilo de escribir codigo. Es como otro test para el estilo del
 codigo.
+
+#semana 4 
+# kafka tiene limitaciones a la hora de migrar a databricks. Deberia crear un event hubs. 
+Confluent ya no me funciona. 
+voy a usar structured streaming. no necesita en principio nada especial a la hora de migrar
+a databricks
+en vez de topics el generador sintetico publica una tabla delta
+structured streaming va leyendo la tabla y apunta el offset in _checkpoints. 
+
+#El generador sintetico guarda la informacion en landing y de ahi structured streaming lo 
+coge y lo pone en Bronze. 
+
+Se crea un modulo para guardar los metadatos del lakehouse. gold_pipeline_metrics

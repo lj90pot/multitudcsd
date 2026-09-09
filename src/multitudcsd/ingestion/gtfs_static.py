@@ -22,7 +22,7 @@ import math
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StringType, StructField, StructType
 
-from multitudcsd.config import get_lakehouse_root
+from multitudcsd.config import get_lakehouse_root, PUNTOS_DEL_RECORRIDO, MARGEN_KILOMETROS
 from multitudcsd.ingestion.http_request import download_bytes
 from multitudcsd.storage import write_bronze_snapshot
 
@@ -96,22 +96,6 @@ ESQUEMA_BRONZE_CALENDAR_DATES = StructType([
     StructField("date", StringType(), nullable=False),
     StructField("exception_type", StringType(), nullable=False),
 ])
-
-#TODO pasar estos puntos del recorrido a variables del proyecto
-#Se calcula el area de estaciones con los puntos de interes del recorrido
-# Puntos de referencia del recorrido del CSD 2026 (coordenadas de Wikipedia):
-# Spittelmarkt -> Nollendorfplatz (Schoneberg) -> Puerta de Brandeburgo.
-PUNTOS_DEL_RECORRIDO = [
-    (52.5111, 13.4022),  # Spittelmarkt
-    (52.4994, 13.3542),  # Nollendorfplatz
-    (52.5163, 13.3777),  # Puerta de Brandeburgo
-]
-
-# Margen alrededor de esos puntos. Es una aproximacion simple, NO el trazado
-# exacto de la calle (para eso haria falta la geometria real del recorrido)
-#Este parametro se usa para calcular
-# las estaciones de llegada y dispersion del publico.
-MARGEN_KILOMETROS = 3.0
 
 #Correccion de la latitud
 # 1 grado de latitud son ~111.32 km en cualquier sitio, pero 1 grado de longitud

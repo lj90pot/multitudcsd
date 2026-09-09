@@ -24,8 +24,6 @@ def get_feed_url() -> str:
     #url = os.getenv("VIZ_DISRUPTIONS_URL", "https://api.viz.berlin.de/daten/baustellen_sperrungen_viz.json")
     #datos en bruto
     url = os.getenv("VIZ_DISRUPTIONS_URL", "https://api.viz.berlin.de/tic3/baustellen_sperrungen_tic.json")
-    if not url:
-        raise RuntimeError("Define VIZ_DISRUPTIONS_URL en el .env antes de ejecutar la ingesta")
     return url
 
 

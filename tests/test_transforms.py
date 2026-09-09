@@ -628,7 +628,7 @@ def test_mobility_vs_activity_suma_la_capacidad_de_todos_los_modos(spark):
     fila = build_gold_mobility_vs_activity(actividad, presion, capacidad).collect()[0]
 
     assert fila["num_scheduled_stops"] == 55
-    assert fila["num_routes"] == 5
+    assert fila["num_routes_all_modes"] == 5
     # Una sola fila: el cruce no puede duplicar la actividad al abrir por modo.
     assert build_gold_mobility_vs_activity(actividad, presion, capacidad).count() == 1
 

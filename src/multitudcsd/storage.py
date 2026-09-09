@@ -1,4 +1,5 @@
-"""Lectura y escritura de tablas Delta en el Lakehosue. Ningun otro modulo escribe Delta."""
+"""Lectura y escritura de tablas Delta en el Lakehouse.
+Ningun otro modulo escribe Delta."""
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
@@ -43,17 +44,17 @@ def write_bronze(df: DataFrame, table_name: str, source: str) -> None:
     print(f"[storage] escritas {df_con_metadatos.count()} filas en {ruta}")
 
 def write_bronze_snapshot(df: DataFrame, table_name: str, source: str) -> None:
-   """Escribe en Bronze sobrescribiendo, para fuentes que son estaticas como la oferta de tpte.
+    """Escribe en Bronze sobrescribiendo, para fuentes que son estaticas como la oferta de tpte.
 
-   El GTFS estatico no es un flujo de eventos: cada descarga sustituye entera a la
-   anterior.
-   """
-   df_con_metadatos = add_ingest_metadata(df, source)
-   ruta = get_table_path("bronze", table_name)
-   df_con_metadatos.write.format("delta").mode("overwrite").option(
+    El GTFS estatico no es un flujo de eventos: cada descarga sustituye entera a la
+    anterior.
+    """
+    df_con_metadatos = add_ingest_metadata(df, source)
+    ruta = get_table_path("bronze", table_name)
+    df_con_metadatos.write.format("delta").mode("overwrite").option(
        "overwriteSchema", "true"
-   ).save(ruta)
-   print(f"[storage] sobrescritas {df_con_metadatos.count()} filas en {ruta}")
+    ).save(ruta)
+    print(f"[storage] sobrescritas {df_con_metadatos.count()} filas en {ruta}")
 
 def read_delta(spark: SparkSession, layer: str, table_name: str) -> DataFrame:
     """Lee una tabla Delta del lakehouse."""
