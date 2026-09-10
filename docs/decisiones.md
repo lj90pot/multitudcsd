@@ -89,3 +89,8 @@ structured streaming va leyendo la tabla y apunta el offset in _checkpoints.
 coge y lo pone en Bronze. 
 
 Se crea un modulo para guardar los metadatos del lakehouse. gold_pipeline_metrics
+
+#semana 5
+
+gold_line_reliability ahora incluye la fecha para poder ejecutar un ml y tener en la capa
+de servicio una tabla gold con el ml

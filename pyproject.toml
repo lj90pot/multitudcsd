@@ -18,7 +18,12 @@ dependencies = [
 [project.optional-dependencies]
 #librerias opcionales solo en local.
 #reinstalarlos rompe el cluster databricks
-local = ["pyspark==3.5.1", "delta-spark==3.2.0"]
+local = [
+    "pyspark==3.5.1",
+    "delta-spark==3.2.0",
+    "pandas>=2.2,<2.3",
+    "numpy<2"
+]
 dev = ["pytest==8.3.3", "ruff==0.6.9", "build"]
 
 [tool.setuptools.packages.find]
@@ -37,3 +42,4 @@ select = ["E", "F", "I"]   # errores, pyflakes, orden de imports
 multitudcsd-bronze = "multitudcsd.orchestration.run_bronze:main"
 multitudcsd-stream = "multitudcsd.orchestration.run_stream:main"
 multitudcsd-silver = "multitudcsd.orchestration.run_silver:main"
+multitudcsd-gold = "multitudcsd.orchestration.run_gold:main"

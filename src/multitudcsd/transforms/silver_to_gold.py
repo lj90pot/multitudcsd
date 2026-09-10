@@ -54,19 +54,20 @@ def build_gold_mobility_pressure(silver_bikes: DataFrame, silver_delays: DataFra
 
 
 def build_gold_line_reliability(silver_delays: DataFrame) -> DataFrame:
-    """Retraso medio y porcentaje de puntualidad por linea y hora del dia.
+    """Retraso medio y porcentaje de puntualidad por linea y hora del dia cada dia.
 
     No necesita h3_index: agrega directamente por route_id, asi que incluye tambien
     los retrasos de paradas fuera de la zona filtrada del GTFS estatico.
     """
     return (
         silver_delays
+        .withColumn("service_date", F.to_date("feed_ts"))
         .withColumn("hour_of_day", F.hour("feed_ts"))
         .withColumn(
             "a_tiempo",
             F.when(F.col("delay_seconds") <= UMBRAL_A_TIEMPO_SEGUNDOS, 1.0).otherwise(0.0),
         )
-        .groupBy("route_id", "hour_of_day")
+        .groupBy("route_id","service_date", "hour_of_day")
         .agg(
             F.avg("delay_seconds").alias("avg_delay_seconds"),
             F.avg("a_tiempo").alias("pct_on_time"),
@@ -176,7 +177,7 @@ def count_k_anonymity_effect(actividad_agregada: DataFrame) -> dict:
         ).alias("menciones_publicadas"),
     ).collect()[0]
 
-    # Una tabla vacia deja los sum() a null: se normaliza a 0 para no romper el print.
+    # Una tabla vacia deja los sum() a null. se normaliza a 0
     celdas_totales = resumen["celdas_totales"]
     celdas_publicadas = resumen["celdas_publicadas"] or 0
     menciones_totales = resumen["menciones_totales"] or 0
@@ -233,16 +234,20 @@ def build_gold_mobility_vs_activity(
             F.sum("num_scheduled_stops").alias("num_scheduled_stops"),
             F.sum("num_routes").alias("num_routes_all_modes"),
         )
-        .withColumn(
-            "mentions_per_scheduled_stop",
-            F.col("num_mentions") / F.nullif(F.col("num_scheduled_stops"), F.lit(0)),
-        )
     )
 
-    return (
+    junto = (
         gold_activity
         .join(gold_mobility_pressure, on=["h3_index", "hour_of_day"], how="left")
         .join(capacidad_por_celda, on=["h3_index", "hour_of_day"], how="left")
+    )
+
+    return junto.withColumn(
+        "mentions_per_scheduled_stop",
+        F.when(
+            F.col("num_scheduled_stops").isNull() | (F.col("num_scheduled_stops") == 0),
+            F.lit(None).cast("double"),
+        ).otherwise(F.col("num_mentions") / F.col("num_scheduled_stops")),
     )
 
 #Bloque para ejecutar en pycharm local
