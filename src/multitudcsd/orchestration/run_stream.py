@@ -1,4 +1,4 @@
-"""Punto de entrada de la etapa 2: genera menciones sinteticas y las vuelca en Bronze."""
+"""Punto de entrada del tier 2: genera menciones sinteticas y las vuelca en Bronze."""
 
 from multitudcsd.config import get_spark_session
 from multitudcsd.streaming.mentions_stream import ingest_mentions_stream

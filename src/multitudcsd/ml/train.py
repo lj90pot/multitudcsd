@@ -70,7 +70,7 @@ def evaluate_predictions(valores_reales, valores_predichos) -> dict:
 
 
 def evaluate_baseline(validacion: pd.DataFrame) -> dict:
-    """Metricas del modelo trivial: suponer que el retraso sera el de la franja anterior.
+    """Metricas del modelo alternativa 0 se supone que el retraso es el mismo de la franj
 
     Es la referencia contra la que se compara. Si el modelo entrenado no baja de estas
     cifras no esta aportando nada
@@ -125,8 +125,8 @@ def train_model(dataset: pd.DataFrame) -> tuple:
 def save_model(modelo: Pipeline, metricas: dict) -> str:
     """Guarda el modelo con joblib y sus metricas en JSON, dentro del lakehouse.
 
-    get_models_root() esta en lakehouse a proposito: en Databricks es un Volume de
-    Unity Catalog, que admite escritura de ficheros con Python normal. La misma linea
+    get_models_root() esta en lakehouse. en Databricks es un Volume de
+    Unity Catalog, que admite escritura de ficheros con Python. La misma linea
     funciona en local y en la nube.
     """
     carpeta = Path(get_models_root())

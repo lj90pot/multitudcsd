@@ -94,3 +94,5 @@ Se crea un modulo para guardar los metadatos del lakehouse. gold_pipeline_metric
 
 gold_line_reliability ahora incluye la fecha para poder ejecutar un ml y tener en la capa
 de servicio una tabla gold con el ml
+
+Se desarrolla una webapp de streamlit para explorar visualmente los datos de la capa gold. 
