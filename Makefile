@@ -51,3 +51,6 @@ build:
 
 clean:
 	rm -rf dist build src/*.egg-info
+
+app:
+	ENV=local streamlit run app/streamlit_app.py

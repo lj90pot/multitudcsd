@@ -28,9 +28,7 @@ COLUMNAS_HORA = ["hour_of_day", "scheduled_hour"]
 @st.cache_resource
 def get_cached_session():
     """Crea la SparkSession una sola vez para toda la sesion del navegador.
-
-    Streamlit reejecuta el script entero en cada interaccion y
-    se levanta una JVM nueva cada vez.
+    para no tener un spark cada vez que interaccioneas con la app
     """
     return get_spark_session("streamlit-gold-explorer")
 
@@ -50,7 +48,7 @@ def find_hour_column(df: pd.DataFrame) -> str:
 
 
 def add_cell_center(df: pd.DataFrame) -> pd.DataFrame:
-    """Anade el centro (lat, lon) de cada celda H3 para poder pintarla en el mapa.
+    """Anhade el centro (lat, lon) de cada celda H3 para poder pintarla en el mapa.
 
     las tablas Gold guardan la celda,
     y st.map necesita coordenadas
