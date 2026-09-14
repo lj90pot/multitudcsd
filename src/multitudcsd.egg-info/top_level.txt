@@ -1,6 +1,1 @@
-ingestion
 multitudcsd
-orchestration
-streaming
-synthetic
-transforms

@@ -12,3 +12,5 @@ mlruns/
 .ruff_cache/
 spark-warehouse/
 docs/kafka_demo/.env
+*.egg-info/
+.eggs/

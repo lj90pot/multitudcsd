@@ -37,6 +37,9 @@ predict:
 ml:
 	ENV=local python -m multitudcsd.orchestration.run_ml
 
+all:
+	ENV=local python -m multitudcsd.orchestration.run_all
+
 test:
 	ENV=local pytest -v
 
