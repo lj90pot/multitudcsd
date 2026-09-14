@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "multitudcsd"
-version = "0.1.0"
+version = "0.1.1"
 license = { text = "MIT" }
 classifiers = ["License :: OSI Approved :: MIT License"]
 description = "Ingesta y procesamiento de datos de movilidad durante el CSD (pride) de Berlin"
