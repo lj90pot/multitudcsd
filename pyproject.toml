@@ -8,7 +8,7 @@ version = "0.1.0"
 license = { text = "MIT" }
 classifiers = ["License :: OSI Approved :: MIT License"]
 description = "Ingesta y procesamiento de datos de movilidad durante el CSD (pride) de Berlin"
-requires-python = ">=3.11,<3.12"
+requires-python = ">=3.11,<3.13"
 dependencies = [
     "requests==2.32.3",
     "gtfs-realtime-bindings==1.0.0",
