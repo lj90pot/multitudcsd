@@ -4,7 +4,7 @@ Version: 0.1.0
 Summary: Ingesta y procesamiento de datos de movilidad durante el CSD (pride) de Berlin
 License: MIT
 Classifier: License :: OSI Approved :: MIT License
-Requires-Python: <3.12,>=3.11
+Requires-Python: <3.13,>=3.11
 License-File: LICENSE
 Requires-Dist: requests==2.32.3
 Requires-Dist: gtfs-realtime-bindings==1.0.0
