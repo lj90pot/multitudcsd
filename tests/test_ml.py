@@ -18,7 +18,7 @@ COLUMNAS_GOLD = [
     "hour_of_day",
     "avg_delay_seconds",
     "pct_on_time",
-    "num_actualizaciones",
+    "num_updates",
 ]
 
 

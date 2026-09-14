@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Captura horaria de las fuentes reales hacia Bronze hasta manana a las 17:00.
+# Captura horaria de las fuentes reales hacia Bronze
 
 cd /d/05_MasterUCM/TFM/multitudcsd || exit 1
 
@@ -11,7 +11,7 @@ mkdir -p data/_logs
 
 $PY -c "import multitudcsd; print('paquete OK')" || exit 1
 
-# --- Una sola vez: el GTFS estatico es una foto completa, no un flujo ---
+# --- Una sola vez: el GTFS estatico es una foto completa ---
 $PY -m multitudcsd.ingestion.gtfs_static
 
 # --- Una sola vez: station_information (coordenadas de las estaciones Nextbike).
@@ -31,7 +31,7 @@ while :; do
   [ "$ESPERA" -gt 0 ] && sleep "$ESPERA"
 
   echo "=== pasada $((PASADA + 1)) - $(date '+%Y-%m-%d %H:%M:%S') ==="
-  # Un feed caido no puede tumbar la captura entera: se registra y se sigue.
+  # Un feed caido no puede tumbar la captura entera: se registra y sigue.
   $PY -m multitudcsd.orchestration.run_bronze || echo "fallo en la pasada $((PASADA + 1))"
 
   PASADA=$(( PASADA + 1 ))

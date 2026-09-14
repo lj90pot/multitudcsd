@@ -14,7 +14,7 @@ HADOOP_HOME_WINDOWS = r"C:\Hadoop"
 #se usa otro sabado. Pero se puede usar para otros eventos cambiando estas variables
 FECHA_REFERENCIA = "2026-09-10"
 FECHA_REFERENCIA_GTFS = "20260910"   # mismo dia en el formato yyyyMMdd para GTFS
-DIA_SEMANA_REFERENCIA = "wednesday"
+DIA_SEMANA_REFERENCIA = "thursday"
 
 # Puntos del recorrido
 #Se puede usar para cambiar el evento por otro

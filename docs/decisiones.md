@@ -95,4 +95,9 @@ Se crea un modulo para guardar los metadatos del lakehouse. gold_pipeline_metric
 gold_line_reliability ahora incluye la fecha para poder ejecutar un ml y tener en la capa
 de servicio una tabla gold con el ml
 
-Se desarrolla una webapp de streamlit para explorar visualmente los datos de la capa gold. 
+Se desarrolla una webapp de streamlit para explorar visualmente los datos de la capa gold.
+
+el dia de referencia pasa a ser el 10-09-2026 por ser la última descarga de datos en local
+el sabado de referencia era el 25 de julio pero como se descargaron los datos el 10 de sept. esa es la fecha de 
+referencia. esto permitio tambien pensar en hacer un proyecto agnostico a la fecha en la que se pueda cambiar
+el dia del evento.

@@ -3,9 +3,9 @@
 #Imports
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from multitudcsd.config import FECHA_REFERENCIA_GTFS
+from multitudcsd.config import DIA_SEMANA_REFERENCIA, FECHA_REFERENCIA_GTFS, FECHA_REFERENCIA
 from multitudcsd.transforms.bronze_to_silver import (
     build_active_service_ids,
     build_silver_bike_availability,
@@ -27,20 +27,21 @@ from multitudcsd.transforms.silver_to_gold import (
 
 #Funciones
 
-def _fila_calendar(service_id, saturday):
-    return (service_id, saturday, "20260601", "20261231")
+def _fila_calendar(service_id, circula_ese_dia):
+    return (service_id, circula_ese_dia, "20260601", "20261231")
 
 
-CAMPOS_CALENDAR = ["service_id", "saturday", "start_date", "end_date"]
+CAMPOS_CALENDAR = ["service_id", DIA_SEMANA_REFERENCIA, "start_date", "end_date"]
 CAMPOS_CALENDAR_DATES = ["service_id", "date", "exception_type"]
+DIA_DE_REFERENCIA = datetime.fromisoformat(FECHA_REFERENCIA)
 
 
 def test_servicios_activos_toma_los_de_sabado_dentro_del_rango(spark):
     #Crear un fake calendar de gtfs statico
     calendar = spark.createDataFrame(
         [
-            _fila_calendar("s_sabado", "1"),
-            _fila_calendar("s_laborable", "0"),
+            _fila_calendar("s_el_dia", "1"),
+            _fila_calendar("s_de_otro_dia", "0"),
             ("s_caducado", "1", "20250101", "20251231"),
         ],
         CAMPOS_CALENDAR,
@@ -53,20 +54,20 @@ def test_servicios_activos_toma_los_de_sabado_dentro_del_rango(spark):
         fila["service_id"] for fila in build_active_service_ids(calendar, calendar_dates).collect()
     )
 
-    assert resultado == ["s_sabado"]
+    assert resultado == ["s_el_dia"]
 
 
 def test_servicios_activos_aplica_las_excepciones_del_dia(spark):
     """exception_type 1 anade un servicio de laborable; el 2 suprime uno de sabado."""
     # Crear un fake calendar de gtfs statico
     calendar = spark.createDataFrame(
-        [_fila_calendar("s_sabado", "1"), _fila_calendar("s_refuerzo", "0")],
+        [_fila_calendar("s_el_dia", "1"), _fila_calendar("s_refuerzo", "0")],
         CAMPOS_CALENDAR,
     )
     calendar_dates = spark.createDataFrame(
         [
             ("s_refuerzo", FECHA_REFERENCIA_GTFS, "1"),
-            ("s_sabado", FECHA_REFERENCIA_GTFS, "2"),
+            ("s_el_dia", FECHA_REFERENCIA_GTFS, "2"),
         ],
         CAMPOS_CALENDAR_DATES,
     )
@@ -86,7 +87,7 @@ def test_supply_descarta_los_viajes_que_no_circulan_ese_dia(spark):
         ["trip_id", "stop_id", "stop_sequence", "arrival_time", "departure_time"],
     )
     trips = spark.createDataFrame(
-        [("t_sabado", "U2", "s_sabado"), ("t_laborable", "U2", "s_laborable")],
+        [("t_sabado", "U2", "s_el_dia"), ("t_laborable", "U2", "s_laborable")],
         ["trip_id", "route_id", "service_id"],
     )
     routes = spark.createDataFrame([("U2", "U2", "400")], ["route_id", "route_short_name", "route_type"])
@@ -94,7 +95,7 @@ def test_supply_descarta_los_viajes_que_no_circulan_ese_dia(spark):
         [("p1", "Nollendorfplatz", "", "52.4996", "13.3540")],
         ["stop_id", "stop_name", "parent_station", "stop_lat", "stop_lon"],
     )
-    activos = spark.createDataFrame([("s_sabado",)], ["service_id"])
+    activos = spark.createDataFrame([("s_el_dia",)], ["service_id"])
 
     resultado = build_silver_transit_supply(stop_times, trips, routes, stops, activos).collect()
 
@@ -111,13 +112,13 @@ def test_supply_normaliza_las_horas_gtfs_mayores_de_24(spark):
         [("t_noche", "p1", "1", "25:10:00", "25:11:00")],
         ["trip_id", "stop_id", "stop_sequence", "arrival_time", "departure_time"],
     )
-    trips = spark.createDataFrame([("t_noche", "N2", "s_sabado")], ["trip_id", "route_id", "service_id"])
+    trips = spark.createDataFrame([("t_noche", "N2", "s_el_dia")], ["trip_id", "route_id", "service_id"])
     routes = spark.createDataFrame([("N2", "N2", "700")], ["route_id", "route_short_name", "route_type"])
     stops = spark.createDataFrame(
         [("p1", "Spittelmarkt", "estacion_padre", "52.5119", "13.4020")],
         ["stop_id", "stop_name", "parent_station", "stop_lat", "stop_lon"],
     )
-    activos = spark.createDataFrame([("s_sabado",)], ["service_id"])
+    activos = spark.createDataFrame([("s_el_dia",)], ["service_id"])
 
     resultado = build_silver_transit_supply(stop_times, trips, routes, stops, activos).collect()
 
@@ -136,12 +137,12 @@ def test_supply_clasifica_los_modos_del_feed_de_vbb(spark):
         ["trip_id", "stop_id", "stop_sequence", "arrival_time", "departure_time"],
     )
     trips = spark.createDataFrame(
-        [("t_bus", "r_bus", "s_sabado"),
-         ("t_sbahn", "r_sbahn", "s_sabado"),
-         ("t_tram", "r_tram", "s_sabado"),
-         ("t_regio", "r_regio", "s_sabado"),
-         ("t_ubahn", "r_ubahn", "s_sabado"),
-         ("t_raro", "r_raro", "s_sabado")],
+        [("t_bus", "r_bus", "s_el_dia"),
+         ("t_sbahn", "r_sbahn", "s_el_dia"),
+         ("t_tram", "r_tram", "s_el_dia"),
+         ("t_regio", "r_regio", "s_el_dia"),
+         ("t_ubahn", "r_ubahn", "s_el_dia"),
+         ("t_raro", "r_raro", "s_el_dia")],
         ["trip_id", "route_id", "service_id"],
     )
     routes = spark.createDataFrame(
@@ -157,7 +158,7 @@ def test_supply_clasifica_los_modos_del_feed_de_vbb(spark):
         [("p1", "Spittelmarkt", "", "52.5119", "13.4020")],
         ["stop_id", "stop_name", "parent_station", "stop_lat", "stop_lon"],
     )
-    activos = spark.createDataFrame([("s_sabado",)], ["service_id"])
+    activos = spark.createDataFrame([("s_el_dia",)], ["service_id"])
 
     resultado = build_silver_transit_supply(stop_times, trips, routes, stops, activos).collect()
     modos = {fila["route_name"]: fila["transport_mode"] for fila in resultado}
@@ -393,7 +394,7 @@ def test_gold_line_reliability_calcula_la_puntualidad(spark):
     assert resultado["hour_of_day"] == 14
     assert resultado["avg_delay_seconds"] == 165.0
     assert resultado["pct_on_time"] == 0.5
-    assert resultado["num_actualizaciones"] == 2
+    assert resultado["num_updates"] == 2
 
 
 def test_gold_mobility_pressure_conserva_las_celdas_de_una_sola_fuente(spark):
@@ -416,7 +417,7 @@ def test_gold_mobility_pressure_conserva_las_celdas_de_una_sola_fuente(spark):
 
 
 def test_gold_mobility_pressure_descarta_los_retrasos_sin_celda(spark):
-    """Un retraso sin h3_index no se puede situar: no entra en una tabla por celda."""
+    """Un retraso sin h3_index no se puede localizar: no entra en una tabla por celda."""
     bikes = spark.createDataFrame(
         [("celda_bici", 4, 6, datetime(2026, 9, 5, 14, 0))],
         "h3_index string, num_bikes_available int, num_docks_available int, reading_ts timestamp",
@@ -437,13 +438,13 @@ CAMPOS_DISRUPTIONS_GOLD = "h3_index string, valid_from timestamp, valid_to times
 def test_gold_disruptions_solo_cuenta_los_cortes_vigentes_ese_dia(spark):
     disruptions = spark.createDataFrame(
         # vigente
-        [("celda_a", datetime(2026, 8, 1), datetime(2026, 10, 1)),
-         # empieza ese dia
-         ("celda_a", datetime(2026, 9, 5, 20), datetime(2026, 9, 6)),
+        [("celda_a", DIA_DE_REFERENCIA - timedelta(days=40), DIA_DE_REFERENCIA + timedelta(days=20)),
+         # empieza esa misma tarde
+         ("celda_a", DIA_DE_REFERENCIA + timedelta(hours=20), DIA_DE_REFERENCIA + timedelta(days=1)),
          # ya paso
-         ("celda_b", datetime(2026, 1, 1), datetime(2026, 2, 1)),
+         ("celda_b", DIA_DE_REFERENCIA - timedelta(days=200), DIA_DE_REFERENCIA - timedelta(days=180)),
          # aun no empezo
-         ("celda_b", datetime(2026, 12, 1), datetime(2026, 12, 31))],
+         ("celda_b", DIA_DE_REFERENCIA + timedelta(days=80), DIA_DE_REFERENCIA + timedelta(days=100))],
         CAMPOS_DISRUPTIONS_GOLD,
     )
 
