@@ -121,3 +121,11 @@ def get_checkpoints_root() -> str:
 def get_models_root() -> str:
     """Carpeta donde se guardan los modelos entrenados con joblib"""
     return f"{get_lakehouse_root()}/models"
+
+def stop_sesion_when_local(spark: SparkSession) -> None:
+    """Para la sesion solo en local. No en Databricks
+    """
+    if get_environment() == "databricks":
+        print("[config] entorno databricks: la sesion la gestiona el cluster")
+        return
+    spark.stop()

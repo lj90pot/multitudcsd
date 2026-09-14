@@ -1,6 +1,6 @@
 """Punto de entrada del bloque de ML: entrena el modelo y publica sus predicciones."""
 
-from multitudcsd.config import get_spark_session
+from multitudcsd.config import get_spark_session, stop_sesion_when_local
 from multitudcsd.ml.features import build_training_features, to_pandas_dataset
 from multitudcsd.ml.predict import TABLA_GOLD, build_predictions, load_model
 from multitudcsd.ml.train import save_model, train_model
@@ -25,7 +25,7 @@ def main() -> None:
     write_gold(predicciones, TABLA_GOLD)
 
     print("[run_ml] modelo entrenado y predicciones publicadas")
-    sesion.stop()
+    stop_sesion_when_local(sesion)
 
 
 if __name__ == "__main__":

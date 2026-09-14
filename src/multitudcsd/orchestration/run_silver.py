@@ -1,6 +1,6 @@
 """ Punto de entrada para ejecutar transforms bronze to silver"""
 
-from multitudcsd.config import get_spark_session
+from multitudcsd.config import get_spark_session, stop_sesion_when_local
 from multitudcsd.storage import read_delta, write_silver
 from multitudcsd.transforms.bronze_to_silver import (
     build_active_service_ids,
@@ -118,7 +118,7 @@ def main() -> None:
     sesion = get_spark_session("run-silver")
     resumen = run_all_silver(sesion)
     print(f"[run_silver] resumen de filas escritas: {resumen}")
-    sesion.stop()
+    stop_sesion_when_local(sesion)
 
 
 if __name__ == "__main__":

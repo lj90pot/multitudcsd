@@ -1,6 +1,6 @@
 """Lanzador de todas las ingestas de la etapa 1 hacia la capa Bronze."""
 
-from multitudcsd.config import get_spark_session
+from multitudcsd.config import get_spark_session, stop_sesion_when_local
 from multitudcsd.ingestion.gbfs import ingest_station_information, ingest_station_status
 from multitudcsd.ingestion.gtfs_rt import ingest_trip_updates
 from multitudcsd.ingestion.gtfs_static import ingestar_gtfs_estatico
@@ -44,7 +44,7 @@ def main() -> None:
     sesion = get_spark_session("ingest-bronze")
     resumen = run_all_ingestions(sesion)
     print(f"[run_bronze] resumen de filas escritas: {resumen}")
-    sesion.stop()
+    stop_sesion_when_local(sesion)
 
 
 if __name__ == "__main__":

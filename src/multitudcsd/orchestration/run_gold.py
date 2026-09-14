@@ -2,7 +2,7 @@
 
 #Imports
 
-from multitudcsd.config import get_spark_session
+from multitudcsd.config import get_spark_session, stop_sesion_when_local
 from multitudcsd.storage import read_delta, write_gold
 from multitudcsd.transforms.silver_to_gold import (
     build_gold_csd_activity,
@@ -124,9 +124,14 @@ def run_all_gold(spark) -> dict:
     return resultados
 
 
-if __name__ == "__main__":
-    # Permite reconstruir toda la capa Gold desde PyCharm con el boton Run.
+def main() -> None:
+    """Punto de entrada de la capa Gold. Lo ejecutan el Makefile, el Job y el wheel."""
     sesion = get_spark_session("run-gold")
     resumen = run_all_gold(sesion)
     print(f"[run_gold] resumen de filas escritas: {resumen}")
-    sesion.stop()
+    stop_sesion_when_local(sesion)
+
+
+if __name__ == "__main__":
+    # Permite reconstruir toda la capa Gold desde PyCharm con el boton Run.
+    main()

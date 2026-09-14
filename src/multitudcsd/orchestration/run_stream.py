@@ -1,6 +1,6 @@
 """Punto de entrada del tier 2: genera menciones sinteticas y las vuelca en Bronze."""
 
-from multitudcsd.config import get_spark_session
+from multitudcsd.config import get_spark_session, stop_sesion_when_local
 from multitudcsd.streaming.mentions_stream import ingest_mentions_stream
 from multitudcsd.synthetic.mentions import generate_landing_files
 
@@ -23,7 +23,7 @@ def main() -> None:
     sesion = get_spark_session("run-stream")
     ingest_mentions_stream(sesion)
     print("[run_stream] menciones sinteticas ingeridas en Bronze")
-    sesion.stop()
+    stop_sesion_when_local(sesion)
 
 
 if __name__ == "__main__":
