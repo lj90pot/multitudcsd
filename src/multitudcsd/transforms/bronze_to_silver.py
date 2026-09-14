@@ -7,6 +7,7 @@ sin depender de que exista Bronze en el filesystem.
 
 #Imports
 import json
+
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 from pyspark.sql.types import (
@@ -19,8 +20,8 @@ from pyspark.sql.types import (
     StructType,
 )
 
-from multitudcsd.transforms.geo import add_h3_index
 from multitudcsd.config import DIA_SEMANA_REFERENCIA, FECHA_REFERENCIA_GTFS
+from multitudcsd.transforms.geo import add_h3_index
 
 # BICIS
 ## Esquemas para parsear el payload_json de Bronze (GBFS)
@@ -264,9 +265,12 @@ def build_active_service_ids(
         .select("service_id")
     )
 
-    excepciones_del_dia = bronze_calendar_dates.filter(F.col("date") == F.lit(FECHA_REFERENCIA_GTFS))
-    servicios_anadidos = excepciones_del_dia.filter(F.col("exception_type") == "1").select("service_id")
-    servicios_suprimidos = excepciones_del_dia.filter(F.col("exception_type") == "2").select("service_id")
+    excepciones_del_dia = (
+        bronze_calendar_dates.filter(F.col("date") == F.lit(FECHA_REFERENCIA_GTFS)))
+    servicios_anadidos = (excepciones_del_dia.filter(F.col("exception_type") == "1")
+                          .select("service_id"))
+    servicios_suprimidos = (excepciones_del_dia.filter(F.col("exception_type") == "2")
+                            .select("service_id"))
 
     # left_anti = quedate con rows de la izquierda que no estan en la derecha
     return (
@@ -396,11 +400,13 @@ if __name__ == "__main__":
 
     bronze_status = read_delta(sesion, "bronze", "bronze_nextbike_status")
     bronze_info = read_delta(sesion, "bronze", "bronze_nextbike_station_information")
-    write_silver(build_silver_bike_availability(bronze_status, bronze_info), "silver_bike_availability")
+    write_silver(
+        build_silver_bike_availability(bronze_status, bronze_info), "silver_bike_availability")
 
     bronze_tripupdates = read_delta(sesion, "bronze", "bronze_gtfs_tripupdates")
     bronze_stops = read_delta(sesion, "bronze", "bronze_gtfs_static_stops")
-    write_silver(build_silver_transit_delays(bronze_tripupdates, bronze_stops), "silver_transit_delays")
+    write_silver(
+        build_silver_transit_delays(bronze_tripupdates, bronze_stops), "silver_transit_delays")
 
     bronze_viz = read_delta(sesion, "bronze", "bronze_viz_disruptions")
     write_silver(build_silver_disruptions(bronze_viz), "silver_disruptions")

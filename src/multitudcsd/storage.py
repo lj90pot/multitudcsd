@@ -4,7 +4,7 @@ Ningun otro modulo escribe Delta."""
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
-from multitudcsd.config import get_lakehouse_root, get_checkpoints_root
+from multitudcsd.config import get_checkpoints_root, get_lakehouse_root
 
 CAPAS_VALIDAS = ("bronze", "silver", "gold")
 

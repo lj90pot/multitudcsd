@@ -1,16 +1,9 @@
 """Tests del bloque de ML"""
 import datetime as dt
 
-import pandas as pd
-import pytest
-
 from multitudcsd.ml.features import (
-    build_scoring_features,
     build_training_features,
-    split_temporal,
-    to_pandas_dataset,
 )
-from multitudcsd.ml.train import build_model, evaluate_predictions, select_columns
 
 COLUMNAS_GOLD = [
     "route_id",

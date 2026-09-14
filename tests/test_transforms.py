@@ -5,24 +5,24 @@
 import json
 from datetime import datetime, timedelta
 
-from multitudcsd.config import DIA_SEMANA_REFERENCIA, FECHA_REFERENCIA_GTFS, FECHA_REFERENCIA
+from multitudcsd.config import DIA_SEMANA_REFERENCIA, FECHA_REFERENCIA, FECHA_REFERENCIA_GTFS
 from multitudcsd.transforms.bronze_to_silver import (
     build_active_service_ids,
     build_silver_bike_availability,
     build_silver_disruptions,
+    build_silver_mentions,
     build_silver_transit_delays,
     build_silver_transit_supply,
     extract_representative_point,
-    build_silver_mentions
 )
 from multitudcsd.transforms.silver_to_gold import (
+    build_gold_csd_activity,
     build_gold_disruptions_by_cell,
     build_gold_line_reliability,
     build_gold_mobility_pressure,
+    build_gold_mobility_vs_activity,
     build_gold_station_services,
     build_gold_transit_capacity,
-    build_gold_csd_activity,
-    build_gold_mobility_vs_activity,
 )
 
 #Funciones
@@ -90,7 +90,9 @@ def test_supply_descarta_los_viajes_que_no_circulan_ese_dia(spark):
         [("t_sabado", "U2", "s_el_dia"), ("t_laborable", "U2", "s_laborable")],
         ["trip_id", "route_id", "service_id"],
     )
-    routes = spark.createDataFrame([("U2", "U2", "400")], ["route_id", "route_short_name", "route_type"])
+    routes = spark.createDataFrame(
+        [("U2", "U2", "400")], ["route_id", "route_short_name", "route_type"]
+    )
     stops = spark.createDataFrame(
         [("p1", "Nollendorfplatz", "", "52.4996", "13.3540")],
         ["stop_id", "stop_name", "parent_station", "stop_lat", "stop_lon"],
@@ -112,8 +114,12 @@ def test_supply_normaliza_las_horas_gtfs_mayores_de_24(spark):
         [("t_noche", "p1", "1", "25:10:00", "25:11:00")],
         ["trip_id", "stop_id", "stop_sequence", "arrival_time", "departure_time"],
     )
-    trips = spark.createDataFrame([("t_noche", "N2", "s_el_dia")], ["trip_id", "route_id", "service_id"])
-    routes = spark.createDataFrame([("N2", "N2", "700")], ["route_id", "route_short_name", "route_type"])
+    trips = spark.createDataFrame(
+        [("t_noche", "N2", "s_el_dia")], ["trip_id", "route_id", "service_id"]
+    )
+    routes = spark.createDataFrame(
+        [("N2", "N2", "700")], ["route_id", "route_short_name", "route_type"]
+    )
     stops = spark.createDataFrame(
         [("p1", "Spittelmarkt", "estacion_padre", "52.5119", "13.4020")],
         ["stop_id", "stop_name", "parent_station", "stop_lat", "stop_lon"],
@@ -305,7 +311,8 @@ def test_delays_conserva_el_adelanto_como_valor_valido(spark):
 
 
 def test_delays_conserva_la_parada_fuera_de_la_zona_con_h3_nulo(spark):
-    """Left join: si la parada no esta en el GTFS filtrado no tenemos posicion pero se queda el dato"""
+    """Left join: si la parada no esta en el GTFS filtrado
+    no tenemos posicion pero se queda el dato"""
     tripupdates = spark.createDataFrame(
         [_fila_tripupdate("t1", "U2", "p_lejana", 120)], CAMPOS_TRIPUPDATE
     )
@@ -438,13 +445,17 @@ CAMPOS_DISRUPTIONS_GOLD = "h3_index string, valid_from timestamp, valid_to times
 def test_gold_disruptions_solo_cuenta_los_cortes_vigentes_ese_dia(spark):
     disruptions = spark.createDataFrame(
         # vigente
-        [("celda_a", DIA_DE_REFERENCIA - timedelta(days=40), DIA_DE_REFERENCIA + timedelta(days=20)),
+        [("celda_a", DIA_DE_REFERENCIA - timedelta(days=40),
+          DIA_DE_REFERENCIA + timedelta(days=20)),
          # empieza esa misma tarde
-         ("celda_a", DIA_DE_REFERENCIA + timedelta(hours=20), DIA_DE_REFERENCIA + timedelta(days=1)),
+         ("celda_a", DIA_DE_REFERENCIA + timedelta(hours=20),
+          DIA_DE_REFERENCIA + timedelta(days=1)),
          # ya paso
-         ("celda_b", DIA_DE_REFERENCIA - timedelta(days=200), DIA_DE_REFERENCIA - timedelta(days=180)),
+         ("celda_b", DIA_DE_REFERENCIA - timedelta(days=200),
+          DIA_DE_REFERENCIA - timedelta(days=180)),
          # aun no empezo
-         ("celda_b", DIA_DE_REFERENCIA + timedelta(days=80), DIA_DE_REFERENCIA + timedelta(days=100))],
+         ("celda_b", DIA_DE_REFERENCIA + timedelta(days=80),
+          DIA_DE_REFERENCIA + timedelta(days=100))],
         CAMPOS_DISRUPTIONS_GOLD,
     )
 
@@ -525,7 +536,10 @@ def test_silver_mentions_tipa_deduplica_y_geolocaliza(spark):
 def test_silver_mentions_deja_h3_nulo_si_no_hay_coordenadas(spark):
     """Una mencion sin coordenadas no para el job: entra con h3_index nulo."""
     bronze = spark.createDataFrame(
-        [("men_000003", "2026-09-05T14:30:00", None, None, "x", "en", 0.1, False, "h", "synthetic")],
+        [
+            ("men_000003", "2026-09-05T14:30:00", None, None, "x", "en",
+             0.1, False, "h", "synthetic")
+        ],
         CAMPOS_BRONZE_MENCIONES,
     )
 

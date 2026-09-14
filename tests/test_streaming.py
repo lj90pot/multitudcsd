@@ -17,7 +17,6 @@ from multitudcsd.streaming.mentions_stream import (
 )
 from multitudcsd.synthetic.mentions import generate_landing_files
 
-
 # Funciones
 
 @pytest.mark.slow

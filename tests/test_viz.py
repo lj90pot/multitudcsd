@@ -5,6 +5,7 @@ import json
 
 from multitudcsd.ingestion.viz import get_feed_url, parse_disruptions
 
+
 #Funciones
 def test_la_url_se_puede_sobrescribir_por_entorno(monkeypatch):
     monkeypatch.setenv("VIZ_DISRUPTIONS_URL", "https://ejemplo/otro.json")

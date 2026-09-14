@@ -10,8 +10,8 @@ from multitudcsd.storage import (
     read_delta,
     write_bronze,
     write_bronze_snapshot,
+    write_gold,
     write_silver,
-    write_gold
 )
 
 #Funciones

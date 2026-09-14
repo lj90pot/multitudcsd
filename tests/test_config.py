@@ -2,8 +2,9 @@
 
 #imports
 
-from multitudcsd.config import get_environment, get_lakehouse_root
 import pytest
+
+from multitudcsd.config import get_environment, get_lakehouse_root
 
 #funciones
 

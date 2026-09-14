@@ -65,7 +65,7 @@ def prepare_windows_hadoop() -> None:
     for binario in ("winutils.exe", "hadoop.dll"):
         if not (carpeta_bin / binario).exists():
             raise RuntimeError(
-                f"Falta {binario} en {carpeta_bin}. Descargalo de cdarlint/winutils para Hadoop 3.3.x."
+                f"Falta {binario} en {carpeta_bin}. Descargalo de cdarlint/winutils Hadoop 3.3.x."
             )
 
     os.environ["HADOOP_HOME"] = str(hadoop_home)

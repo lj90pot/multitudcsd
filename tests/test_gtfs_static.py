@@ -9,14 +9,8 @@ import zipfile
 #Funciones
 #TODO algunas funciones no tienen test
 from multitudcsd.ingestion.gtfs_static import (
-    compute_recorrido_area,
-    esta_cerca_del_csd,
     obtener_calendario_viaje_excepciones,
     obtener_calendario_viajes,
-    obtener_horarios_de_esas_paradas,
-    obtener_lineas_relevantes,
-    obtener_paradas_cerca_del_csd,
-    obtener_viajes_relevantes,
 )
 
 

@@ -16,13 +16,13 @@ solo con los horarios/viajes/lineas que pasan por esas paradas.
 
 import csv
 import io
-import zipfile
 import math
+import zipfile
 
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StringType, StructField, StructType
 
-from multitudcsd.config import get_lakehouse_root, PUNTOS_DEL_RECORRIDO, MARGEN_KILOMETROS
+from multitudcsd.config import MARGEN_KILOMETROS, PUNTOS_DEL_RECORRIDO
 from multitudcsd.ingestion.http_request import download_bytes
 from multitudcsd.storage import write_bronze_snapshot
 
@@ -259,7 +259,8 @@ def ingestar_gtfs_estatico(spark: SparkSession) -> None:
 
     ids_de_servicios = {fila["service_id"] for fila in viajes}
     calendarios = obtener_calendario_viajes(contenido_zip, ids_de_servicios)
-    excepciones_de_calendario = obtener_calendario_viaje_excepciones(contenido_zip, ids_de_servicios)
+    excepciones_de_calendario = obtener_calendario_viaje_excepciones(contenido_zip,
+                                                                     ids_de_servicios)
 
     write_bronze_snapshot(
         spark.createDataFrame(paradas, schema=ESQUEMA_BRONZE_STOPS),

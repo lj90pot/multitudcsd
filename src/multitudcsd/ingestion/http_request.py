@@ -1,4 +1,5 @@
-"""Cliente HTTP con reintentos. El proyecto conecta a los servidores de los servicios de transporte."""
+"""Cliente HTTP con reintentos.
+El proyecto conecta a los servidores de los servicios de transporte."""
 
 import json
 import time
