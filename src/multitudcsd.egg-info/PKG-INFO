@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: multitudcsd
-Version: 0.1.0
+Version: 0.1.1
 Summary: Ingesta y procesamiento de datos de movilidad durante el CSD (pride) de Berlin
 License: MIT
 Classifier: License :: OSI Approved :: MIT License
@@ -20,4 +20,6 @@ Provides-Extra: dev
 Requires-Dist: pytest==8.3.3; extra == "dev"
 Requires-Dist: ruff==0.6.9; extra == "dev"
 Requires-Dist: build; extra == "dev"
+Provides-Extra: viz
+Requires-Dist: streamlit>=1.37; extra == "viz"
 Dynamic: license-file
