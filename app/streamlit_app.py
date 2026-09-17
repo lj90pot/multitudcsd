@@ -1,4 +1,6 @@
-""" test de explorador de las tablas gold con streamlit."""
+""" test de explorador de las tablas gold con streamlit.
+ejecutar en terminal con streamlit run app/streamlit_app.py
+"""
 
 import h3
 import pandas as pd

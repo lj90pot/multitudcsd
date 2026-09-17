@@ -4,9 +4,9 @@ TOPIC = "kafka_demo"
 productor = Producer({"bootstrap.servers": "localhost:9092"})
 
 mensajes = [
-    '{"mention_id": "demo_004", "platform": "mastodon"}',
-    '{"mention_id": "demo_005", "platform": "bluesky"}',
-    '{"mention_id": "demo_006", "platform": "x"}',
+    '{"mention_id": "demo_999", "platform": "a_mastodon"}',
+    '{"mention_id": "demo_998", "platform": "a_bluesky"}',
+    '{"mention_id": "demo_997", "platform": "a_x"}',
 ]
 
 for mensaje in mensajes:

@@ -1,103 +1,158 @@
-# Semana 1
-- 
-- se usa python 3.11 porque es la mejor version para luego usar en databricks y la que usa pyspark en local.
+# Lista de decisiones tomadas por semana y categoría
 
-## Fuentes tier 1
-Este funte no funciona des de el 4 de junio. Se van a completar los datos de manera sintetica
-VBB_GTFS_RT_URL=https://production.gtfsrt.vbb.de/data
-fuente de las bicis
-estos son donde estan todos los links. Dentro de este link estan los links de bicis libres y el estado de las estaciones
+***
 
-NEXTBIKE_GBFS_DISCOVERY_URL=https://gbfs.nextbike.net/maps/gbfs/v2/nextbike_bn/gbfs.json
+## Semana 1
 
-VIZ_DISRUPTIONS_URL=
+### Entorno y forma de trabajar
 
-## lakehosue in azure
-rutas lakehouse en azure. probar primero como hacerlo en unitz catalog volume porque asi no hay
-que poner las credenciales. si uso adls gen2 tengo que poner la credencial. 
+- PyCharm es el IDE  Databricks no se usa para desarrollar.
+- Solo dataframe API y SQL. 
+- Funciones encadenadas. Claridad a la hora de escribir código sin clases y funciones definidas por el usuario.
+- Nombres de funciones en inglés para facilitar la distribución.
+- Se usa python 3.11 porque es la mejor version para luego usar en databricks y la que usa pyspark en local.
+- rutas lakehouse en azure. probar primero como hacerlo en unitz catalog volume porque asi no hay que poner las credenciales. si uso adls gen2 tengo que poner la credencial. 
+- las tablas del lakehouse son delta
+- las particiones en bronze van por la fecha de ingesta porque tendremos archivos cada dia. Por ejemplo la infomacion de las bicis si se actualiza cada 5/10 minutos ya da un volumen importante.De momento todas las fuentes se particionan por fecha.
+- prepare_windows_hadoop() con winutils.exe y hadoop.dll. Spark necesita la libreria nativa en Windows para leer y escribir Delta en local.
 
-## lakehouse formato
-las tablas del lakehouse son delta
-las particiones en bronze van por la fecha de ingesta porque tendremos archivos cada dia. 
-Por ejemplo la infomacion de las bicis si se actualiza cada 5/10 minutos ya da un volumen importante
-De momento todas las fuentes se particionan por fecha.
+### Configuracion y parametros
 
-## http.py va a descargar bytes no solo el json. 
-en algunas fuentes no recibo json, recibo protobuf. asi descargo y luego parseo. 
+- lakehouse folder. la ruta se decide en config.py. asi no da error al ejecutar desde la consola alternativa poner el lakehouse_root en .env
+- En Databricks, LAKEHOUSE_ROOT se inyecta como variable de entorno del cluster y se lanza RuntimeError si falta
+- Ruta absoluta. Spark en windows tiene problemas al coger la ruta relativa.  D:/..., no D:\
+- prints para el log con nombre del modulo y mensaje. ej: f"[gbfs] {len(filas)} estaciones (informacion estatica) descargadas"
 
-## lakehouse folder
-ahora se decide la ruta en config.py. asi no da error al ejecutar desde la consola
-alternativa poner el lakehouse_root en .env
+### Lakehouse
 
-## gtfs_static para calcular el delay de cada viaje. Se parsea solo las estaciones cerca del recorrido no todo berlin. 
+- Arquitectura Medallion Bronze, Silver, Gold en Delta Lake
+- Bronze guarda el payload sin aplanar y con columnas de metadatos
+- Bronze se particiona por ingest_date. no se particiona mas. de momento los datos no son suficientes.
+- Modulo storage.py es el unico que escribe en lakehouse
+- Bronze es append-only
 
-## Explorar bvg los delays ya estan ahi. 
+### Ingesta etapa 1
 
-# Semana 2
+- http.py va a descargar bytes no solo el json. en algunas fuentes no recibo json, recibo protobuf. asi descargo y luego parseo.
+- Este fuente no funciona desde el 4 de junio. VBB_GTFS_RT_URL=https://production.gtfsrt.vbb.de/data. Datos pueden venir incompletos
+- gtfs_static para calcular el delay de cada viaje. Se parsea solo las estaciones cerca del recorrido no todo berlin.
+- Explorar bvg los delays ya estan ahi. Descartado
+- http.py ahora sse llama http_request.py para no causar problemas
+- VBB bloquea las peticiones sin User-Agent. Cabecera User-Agent de navegador
+- Reintentos: 2 intentos, timeout 60 s, espera de 30 s entre intentos
+- gtfs-rt envia un protobuf que se decodifica a json y no se aplana. 
+- GBFS necesita de station_status y station_information para tener coordenadas. Añadido station_information.
+- GTFS_static se filtra a la zona del evento. El archivo es muy grande y mucha informacion no es necesaria. 
 
-- Los datos se localizaran con latitud y longitud en una malla que divide el terreno en hexágonos, el sistema H3. 
-Este sistema presenta ventajas frente a otros con cuadricula rectangular que distorsionan la resolucion dependiendo 
-de la latitud o soluciones más complejas que necesitan de bases de datos especiales. En nuestro caso H3 con latitud 
-longitud obtenemos una malla de lado 174m que asegura la anonimizacion de los datos. El sistema esta preparado para 
-cambiar la densidad de la malla.
+### Otros
+- Test no usan http. usan datos de ejemplo predescargados o dataframes declarados en ejecucion
+- Lakehosue en azure sera unity catalog. ADLS hay que poner credenciales y el generador sintetico no funciona 
 
-- silver y gold se sobreescriben cada vez, ya que el volumen de datos no es importante en este momento
-- La malla de H3 sera el nivel 9 de 174m de arista. esto ayuda a anonimizar y da suficiente
-resolucion para modelar donde esta la gente y las estaciones 
+___
 
-# en una primera version se metian directamente las coordenadas que limitaban un rectangulo
-alrededor del recorrido. He mejorado el codigo para que cada año se puedan meter los puntos
-de interes del recorrido y las coordenadas se calculen automaticamente
+## Semana 2
+
+### configuración y parámetros
+
+- .config("spark.sql.shuffle.partitions", "4") se baja a 4 para reducir tiempo de arranque en local.
+- Los puntos de interes del recorrido calculan automaticamente las coordenadas de la caja. no se cambia manual.
+
+### Lakehouse
+
+- Silver y Gold se reconstruyen con overwrite en cada ejecucion. el evento dura pocas horas. La evolucion incremental es linea futura, no requisito
+- funciones build reciben un dataframe y devuelven un dataframe
+
+
+### Ingesta etapa 1
+
+- para viz se busca un punto representativo de la incidencia.
+- viz se cogen las incidencias activas el dia del evento. 
+- malla hexagonal H3 con resolucion 9. aprox 174m de arista. Asi se asegura anonimizacion. Podria ser mas exacto.
+ 
+___
 
 ## Semana 3
-#corregido el dia. Los feeds en vivo no cubren el 25 de julio. Se coje un dia en septiembre 
-se ponen las fechas en config.py
 
-#probado y mejorado todos los test del tier 1. ingestar gtfs_estatico no tiene test debido a
-que usa funciones ya cubiertas por otros test.
+### Entorno y forma de trabajar
 
-#clasificacion de los modos de transporte segun la red alemana. 
-No se incluyen medios de transporte fluviales
+- Databricks Jobs como orquestador en la nube. Airflow anhade otra dependencia y otro aprovisionamiento en databricks
+- makefile para ejecutar/orquestar en local
+- ruff para probar el estilo de código. 
+- Github ejecuta ruff y pytest en cada push. CI. 
+ 
+### configuración y parámetros
+ 
+- el dia del CSD es el pasado para que las agregaciones funcionen se usa otro dia y se pone el dia de referencia como variable.
+- config.py tendra las variables del evento. esto hace el proyecto reutilizable a otros eventos.
 
-#Kafka descartado como gestor de eventos. Kafka va en docker. tengo problemas de espacio 
-en el pc. Ademas en Azure tendria que montar kafka en confluence y ya no tengo la cuenta 
-gratuita o montar eventhubs que me consume los creditos mas rapidos. 
-La evolucion natural seria que los eventos se gestionaran con evenhub
+ 
+### Ingesta etapa 1
+ 
+- gtfs_static pasa a ingestarse una vez y no sigue la cadencia de descarga. La oferta es la misma para todo el dia. Se ahorra una descarga. write_bronze_snapshot
 
-#Databricks jobs va a ser el orquestador de los jobs.
+### Procesamiento
 
-#Silver y gold se ejecutan con overwrite. El evento dura pocas horas.
-La evolucion sera hacerlos incrementales para vender datos de movilidad a las aplicaciones
-como contrapartida por compartir datos durante el csd. Esto es el tier 3 que no esta desarrollado.
+- H3 se añade en silver
+- El umbral de retraso es 60 segundos
+- Contrato de datos. Los esquemas de las tablas se definen en structtype
+- Gold agrega por celda H3 y franja horaria. Por minuto de momento no tiene sentido con lo que tarda en descargar. 
+ 
+### Descartes
+
+- etapa 3 gestor de multitudes con simulacion peatonal queda fuera. 
+- con la etapa 3 el generador sintetico de posiciones de apps de citas queda fuera
+- el recomendador en tiempo real con una fastapi se descarta el caer la etapa 3
+
+___
+
+## Semana 4
+
+### Ingesta etapa 1
+- INGESTAR_GTFS_ESTATICO = False. variable ingesta de gtfs_static. En azure se hace la ingesta a mano la primera vez
+
+### ingesta etapa 2
+
+- se descarta kafka como ingesta. Spark Structured Streaming. Kafka demo. 
+- Spark Structured streaming. Corre identico en local y en la nube. lectura incremental, esquema explicito, checkpointing y semantica de append
+- Un generador escribe en la capa landing del lakehouse y structured streaming coge las menciones de ahi. 
+- El consumidor no se queda escuchando.
+- Generador es sintético pero reproducible para evitar errores en el pase de Azure. Estoy seguro que los joins funcionan.
+- perfil horario que simula cuando se publican mas menciones geolocalizadas. 
+- las menciones se generan alrededor de los puntos de interes declarados del recorrido
 
 
-#.github/workflows va a testear que los test pasan cuando haces push en github. 
-es parte del modelo CI / CD 
+### Procesamiento
 
-#ruff va a comprobar el estilo de escribir codigo. Es como otro test para el estilo del
-codigo.
+- gold_mobilitz_vs_activity hace join de las dos etapas.
+- en gold no hay info de menciones en celdas que tienen menos de 5 menciones. Anonimización.
 
-#semana 4 
-# kafka tiene limitaciones a la hora de migrar a databricks. Deberia crear un event hubs. 
-Confluent ya no me funciona. 
-voy a usar structured streaming. no necesita en principio nada especial a la hora de migrar
-a databricks
-en vez de topics el generador sintetico publica una tabla delta
-structured streaming va leyendo la tabla y apunta el offset in _checkpoints. 
+### Lakehouse
 
-#El generador sintetico guarda la informacion en landing y de ahi structured streaming lo 
-coge y lo pone en Bronze. 
+- gold_pipeline_metrics. inventario de tablas del lakehouse como tabla gold.
 
-Se crea un modulo para guardar los metadatos del lakehouse. gold_pipeline_metrics
+___
 
-#semana 5
+## Semana 5
 
-gold_line_reliability ahora incluye la fecha para poder ejecutar un ml y tener en la capa
-de servicio una tabla gold con el ml
+### Local
 
-Se desarrolla una webapp de streamlit para explorar visualmente los datos de la capa gold.
+- webapp streamlit para explorar las tablas visualmente. Simulacion de capa de consumo
 
-el dia de referencia pasa a ser el 10-09-2026 por ser la última descarga de datos en local
-el sabado de referencia era el 25 de julio pero como se descargaron los datos el 10 de sept. esa es la fecha de 
-referencia. esto permitio tambien pensar en hacer un proyecto agnostico a la fecha en la que se pueda cambiar
-el dia del evento.
+### ML
+
+- añadido un modelo de machine learning para predecir el retraso en la proxima hora con datos de VBB
+- no MLflow
+- Minimo de filas para entrenar (MINIMO_FILAS_ENTRENAMIENTO = 50)
+
+### Azure 
+
+- DAG de 5 tareas con ingest_bronze y stream_mentions en paralelo
+- Cada tarea es un python_wheel_task contra un entry point del wheel
+- Se cambia a python 3.12 que es el que usa el cluster de azure
+
+## Semana 6
+
+### Memoria y entrega
+
+- Kafka aparece en la memoria solo como alternativa considerada y descartada. se menciona la demo
+- Excepcion: gtfs_static.py conserva los nombres de funcion en espanol
